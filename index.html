@@ -110,6 +110,10 @@ input[type="text"], input[type="password"], select {
 .story .tools .btn { padding: 9px 12px; font-size: 14px; font-weight: 500; }
 .err { color: var(--danger); font-size: 14px; margin: 0; }
 .story .tools.share { border-top: 0; padding-top: 0; }
+.maplinks { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; }
+.maplinks .lbl { color: var(--muted); }
+.maplinks a { color: var(--accent); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; text-decoration: none; font-weight: 500; }
+.maplinks .tag { font-variant-numeric: tabular-nums; }
 .wiki { font-size: 14px; }
 .wiki summary { cursor: pointer; color: var(--muted); font-size: 13px; letter-spacing: .04em; }
 .wiki ul { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
@@ -236,7 +240,7 @@ input[type="text"], input[type="password"], select {
     <ul id="logList"></ul>
     <button type="button" class="clear" id="clearLog">Очистить историю</button>
   </section>
-  <p class="tag" id="ver">версия 9 · 17.10.2026</p>
+  <p class="tag" id="ver">версия 10 · 17.10.2026</p>
 </div>
 
 <script>
@@ -661,6 +665,7 @@ ${contextBlock(near)}
       ${p.meta ? `<p class="meta">${esc(p.meta)}</p>` : ""}
       <div class="body">${opts.thinking && !p.body ? `<p class="thinking">${esc(opts.thinking)}</p>` : paras(p.body)}</div>
       ${opts.error ? `<p class="err">${esc(opts.error)}</p>` : ""}
+      ${!item.sample && item.pos && !opts.streaming ? mapLinks(item) : ""}
       ${opts.streaming ? '<div class="tools"><button type="button" class="btn" id="stopBtn">Остановить</button></div>' : ""}
       ${!opts.streaming && !item.sample && p.body ? `
         <div class="tools">
@@ -688,6 +693,17 @@ ${contextBlock(near)}
     b("otherBtn", () => describe({ prov: other }));
     const f = $("askForm"); if (f) f.onsubmit = (e) => { e.preventDefault(); ask(); };
     if ($("shareBtn")) wireShare(item);
+  }
+
+  // Where the photo was taken (or where the place is): Google Maps, Apple Maps, and Street View facing the camera's way
+  function mapLinks(item) {
+    const { lat, lon } = item.pos, ll = `${lat},${lon}`;
+    const name = encodeURIComponent(parse(item.text).title || "Фото");
+    const pano = item.heading != null ? `<a href="https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${ll}&heading=${item.heading}" target="_blank" rel="noopener">Панорама</a>` : "";
+    return `<div class="maplinks"><span class="lbl">${item.target ? "Место на карте" : "Где снято"}</span>
+      <a href="https://www.google.com/maps/search/?api=1&query=${ll}" target="_blank" rel="noopener">Google Maps</a>
+      <a href="https://maps.apple.com/?ll=${ll}&q=${name}" target="_blank" rel="noopener">Apple Карты</a>${pano}
+      <span class="tag">${lat.toFixed(5)}, ${lon.toFixed(5)}</span></div>`;
   }
 
   // ---------- Describe ----------
@@ -1084,7 +1100,7 @@ ${t.info ? "Данные с карты: " + t.info + "\n" : ""}${t.wiki ? "Ви�
 
   // ---------- Updates ----------
   // GitHub Pages lets phones cache the page for ~10 minutes; check for a newer build and offer a one-tap reload
-  const VERSION = 9;
+  const VERSION = 10;
   async function checkUpdate() {
     try {
       const html = await (await fetch("index.html?t=" + Date.now(), { cache: "no-store" })).text();
