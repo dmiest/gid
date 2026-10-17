@@ -110,6 +110,10 @@ input[type="text"], input[type="password"], select {
 .story .tools .btn { padding: 9px 12px; font-size: 14px; font-weight: 500; }
 .err { color: var(--danger); font-size: 14px; margin: 0; }
 .story .tools.share { border-top: 0; padding-top: 0; }
+.wiki { font-size: 14px; }
+.wiki summary { cursor: pointer; color: var(--muted); font-size: 13px; letter-spacing: .04em; }
+.wiki ul { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.wiki a { color: var(--accent); }
 .story .hint { font-size: 13px; color: var(--muted); margin: 0; }
 .ask { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
 .qa { display: flex; flex-direction: column; gap: 10px; }
@@ -213,7 +217,7 @@ input[type="text"], input[type="password"], select {
     <ul id="logList"></ul>
     <button type="button" class="clear" id="clearLog">Очистить историю</button>
   </section>
-  <p class="tag" id="ver">версия 6 · 17.10.2026</p>
+  <p class="tag" id="ver">версия 7 · 17.10.2026</p>
 </div>
 
 <script>
@@ -308,9 +312,27 @@ input[type="text"], input[type="password"], select {
           return { name: t.name, kind, dist, extra };
         }).filter(o => o.name).sort((a, b) => (a.dist ?? 999) - (b.dist ?? 999)).slice(0, 15);
       }).catch(() => {});
-    await Promise.all([rev, ovp]);
+    const wiki = withTimeout(wikiNear(pos), 9000).then(w => { near.wiki = w; }).catch(() => { near.wiki = []; });
+    await Promise.all([rev, ovp, wiki]);
     if (state.pos === pos) state.near = near;
     return near;
+  }
+  // Wikipedia articles geotagged within ~200 m: Russian and English everywhere, Hebrew inside Israel
+  async function wikiNear(pos) {
+    const inIsrael = pos.lat > 29.4 && pos.lat < 33.4 && pos.lon > 34.2 && pos.lon < 35.9;
+    const plan = [["ru", 4], ["en", 3], ...(inIsrael ? [["he", 3]] : [])];
+    const one = async ([lang, n]) => {
+      const api = `https://${lang}.wikipedia.org/w/api.php?format=json&formatversion=2&origin=*`;
+      const g = await (await fetch(`${api}&action=query&list=geosearch&gscoord=${pos.lat}%7C${pos.lon}&gsradius=200&gslimit=${n}`)).json();
+      const hits = g.query?.geosearch || [];
+      if (!hits.length) return [];
+      const e = await (await fetch(`${api}&action=query&prop=extracts&exintro=1&explaintext=1&exchars=700&pageids=${hits.map(h => h.pageid).join("%7C")}`)).json();
+      const ex = Object.fromEntries((e.query?.pages || []).map(pg => [pg.pageid, pg.extract || ""]));
+      return hits.map(h => ({ lang, title: h.title, dist: Math.round(h.dist), extract: (ex[h.pageid] || "").replace(/\s+/g, " ").trim(),
+        url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(h.title.replace(/ /g, "_"))}` }));
+    };
+    const res = await Promise.all(plan.map(x => one(x).catch(() => [])));
+    return res.flat().sort((a, b) => a.dist - b.dist);
   }
   function haversine(a, b, c, d) {
     const R = 6371000, r = Math.PI / 180, x = (c - a) * r, y = (d - b) * r;
@@ -406,6 +428,8 @@ input[type="text"], input[type="password"], select {
     if (near?.address) lines.push(`Адрес по OpenStreetMap: ${near.address}.`);
     if (near?.objects?.length) lines.push("Названные объекты рядом по OpenStreetMap (расстояние от пользователя):\n" +
       near.objects.map(o => `- ${o.name}${o.kind ? ` [${o.kind}]` : ""}${o.dist != null ? `, ${o.dist} м` : ""}${o.extra ? ` (${o.extra})` : ""}`).join("\n"));
+    if (near?.wiki?.length) lines.push("Статьи Википедии о местах рядом (проверенные сведения; опирайся на них, если объект на фото совпадает с одним из них, и не переноси факты на другое здание):\n" +
+      near.wiki.map(w => `- [${w.lang}] ${w.title}, ${w.dist} м: ${w.extract || "(без описания)"}`).join("\n"));
     if (place.value.trim()) lines.push(`Уточнение от пользователя: ${place.value.trim()}.`);
     return lines.join("\n");
   }
@@ -530,6 +554,8 @@ ${contextBlock(near)}
           <button type="button" class="btn" id="copyBtn">Копировать текст</button>
         </div>
         <p class="hint" id="shareHint" hidden></p>
+        ${item.near?.wiki?.length ? `<details class="wiki"><summary>Рядом в Википедии · ${item.near.wiki.length}</summary><ul>${item.near.wiki.map(w =>
+          `<li><a href="${esc(w.url)}" target="_blank" rel="noopener">${esc(w.title)}</a> <span class="tag">${esc(w.lang)} · ${w.dist} м</span></li>`).join("")}</ul></details>` : ""}
         <div class="qa" id="qa">${(item.qa || []).map(x => `<div class="q">${esc(x.q)}</div><div class="a">${paras(x.a)}</div>`).join("")}</div>
         <form class="ask" id="askForm">
           <input type="text" id="askInput" placeholder="Спросить гида: кто архитектор? что было здесь раньше?" autocomplete="off">
@@ -626,7 +652,7 @@ ${contextBlock(near)}
     if (!item.text) return;
     let log = getLog().filter(x => x.date !== item.date);
     const { near, _share, ...rest } = item;
-    log.unshift({ ...rest, near: near ? { address: near.address } : null });
+    log.unshift({ ...rest, near: near || null });
     log.slice(60).forEach(x => photos.del(x.photoId || x.date));
     log = log.slice(0, 60);
     while (log.length && !store.set("kg.log", log)) log.pop();
@@ -794,7 +820,7 @@ ${contextBlock(near)}
 
   // ---------- Updates ----------
   // GitHub Pages lets phones cache the page for ~10 minutes; check for a newer build and offer a one-tap reload
-  const VERSION = 6;
+  const VERSION = 7;
   async function checkUpdate() {
     try {
       const html = await (await fetch("index.html?t=" + Date.now(), { cache: "no-store" })).text();
