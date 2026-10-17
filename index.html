@@ -211,6 +211,7 @@ input[type="text"], input[type="password"], select {
     <ul id="logList"></ul>
     <button type="button" class="clear" id="clearLog">Очистить историю</button>
   </section>
+  <p class="tag" id="ver">версия 4 · 17.10.2026</p>
 </div>
 
 <script>
@@ -260,6 +261,11 @@ input[type="text"], input[type="password"], select {
   document.querySelectorAll("[data-lang]").forEach(b => b.onclick = () => { if (state.lang === b.dataset.lang) return; state.lang = b.dataset.lang; store.set("kg.lang", state.lang); syncSeg(); retell(); });
   syncSeg();
   const place = $("place");
+  // A new clarification re-tells the current photo (Enter on the keyboard or leaving the field)
+  let lastPlace = place.value.trim();
+  const placeChanged = () => { const v = place.value.trim(); if (v === lastPlace) return; lastPlace = v; retell(); };
+  place.addEventListener("change", placeChanged);
+  place.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); place.blur(); placeChanged(); } });
 
   // ---------- Geolocation ----------
   function showPos(msg, isErr) { const el = $("gpsInfo"); el.textContent = msg; el.classList.toggle("err", !!isErr); }
@@ -538,7 +544,7 @@ ${contextBlock(near)}
     if (!state.b64) return;
     if (state.busy) { state.ctl?.abort(); await state.running?.catch(() => {}); }
     const prov = opts.prov || state.prov;
-    const key = `${prov}|${state.style}|${state.lang}`;
+    const key = `${prov}|${state.style}|${state.lang}|${place.value.trim()}`;
     const cached = !opts.again && state.variants.get(key);
     if (cached) { state.current = cached; renderStory(cached); saveToLog(cached); return; }
     const item = { text: "", prov, model: prov === "gemini" ? gModel.value.trim() : cModel.value, style: state.style, lang: state.lang,
