@@ -122,6 +122,19 @@ input[type="text"], input[type="password"], select {
 .qa .a p { margin: 0 0 .6em; }
 
 /* Logbook */
+/* Nearby sights */
+.nearby { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.nearby .head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.nearby h2 { font-family: var(--f-display); font-weight: 400; font-size: 22px; margin: 0; }
+.nearby .close { background: none; border: 0; color: var(--muted); font: 13px var(--f-body); text-decoration: underline; cursor: pointer; padding: 4px 0; }
+.nearby ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.nearby li { border-top: 1px solid var(--line); padding: 12px 0; display: flex; flex-direction: column; gap: 6px; }
+.nearby .nm { font-family: var(--f-display); font-size: 18px; line-height: 1.25; }
+.nearby .dist { font: 12px var(--f-mono); color: var(--mark); font-variant-numeric: tabular-nums; }
+.nearby .why { font-size: 14px; margin: 0; }
+.nearby .acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.nearby .acts a, .nearby .acts button { font: 500 13px var(--f-body); color: var(--accent); background: none; border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px; cursor: pointer; text-decoration: none; }
+.nearby .note { font-size: 13px; color: var(--muted); margin: 0; }
 .log h3 { font: 500 12px var(--f-body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
 .log ul { list-style: none; margin: 0; padding: 0; }
 .log li button { width: 100%; display: grid; grid-template-columns: 56px 1fr; gap: 12px; align-items: center; text-align: left; background: none; border: 0; border-top: 1px solid var(--line); padding: 10px 0; color: var(--ink); cursor: pointer; font: inherit; }
@@ -210,6 +223,12 @@ input[type="text"], input[type="password"], select {
     </label>
   </div>
 
+  <button type="button" class="btn" id="nearBtn">
+    <svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
+    Что посмотреть рядом
+  </button>
+  <section class="nearby" id="nearby" hidden aria-live="polite"></section>
+
   <article class="story" id="story" aria-live="polite"></article>
 
   <section class="log" id="log" hidden>
@@ -217,7 +236,7 @@ input[type="text"], input[type="password"], select {
     <ul id="logList"></ul>
     <button type="button" class="clear" id="clearLog">Очистить историю</button>
   </section>
-  <p class="tag" id="ver">версия 8 · 17.10.2026</p>
+  <p class="tag" id="ver">версия 9 · 17.10.2026</p>
 </div>
 
 <script>
@@ -674,6 +693,7 @@ ${contextBlock(near)}
   // ---------- Describe ----------
   // Re-tell the current photo when style or language changes; finished versions are kept per photo so switching back is instant
   function retell() {
+    if (state.current?.target) return describePlace(state.current.target);
     if (state.b64 && state.current && state.current.photoId === state.photoId) describe();
   }
 
@@ -902,7 +922,7 @@ ${contextBlock(near)}
     })().catch(() => null));
     ready.then(f => {
       if (state.current !== item || !$("shareBtn")) return;
-      if (!f) { hint("Фото этого места не сохранилось, можно поделиться только текстом."); $("shareBtn").hidden = $("cardBtn").hidden = true; return; }
+      if (!f) { if (!item.target) hint("Фото этого места не сохранилось, можно поделиться только текстом."); $("shareBtn").hidden = $("cardBtn").hidden = true; return; }
       $("shareBtn").disabled = $("cardBtn").disabled = false;
       const go = async (files, withText) => {
         const data = { files, title: parse(item.text).title || "Камерный гид" };
@@ -919,9 +939,152 @@ ${contextBlock(near)}
     });
   }
 
+  // ---------- Nearby sights ----------
+  const SIGHT_KIND = { attraction: "достопримечательность", museum: "музей", viewpoint: "смотровая площадка", artwork: "арт-объект", gallery: "галерея",
+    monument: "памятник", memorial: "мемориал", castle: "замок", church: "храм", ruins: "руины", archaeological_site: "раскопки", building: "историческое здание",
+    city_gate: "городские ворота", fort: "крепость", manor: "усадьба", place_of_worship: "храм", park: "парк", fountain: "фонтан", wayside_shrine: "часовня" };
+  const walkMin = (m) => Math.max(1, Math.round(m * 1.25 / 75));
+
+  async function sightsRaw(pos) {
+    const q = `[out:json][timeout:15];(
+      nwr["tourism"~"^(attraction|museum|viewpoint|artwork|gallery)$"]["name"](around:1000,${pos.lat},${pos.lon});
+      nwr["historic"]["name"]["historic"!~"^(memorial_plaque|boundary_stone|milestone|tomb|grave)$"](around:1000,${pos.lat},${pos.lon});
+      nwr["amenity"="place_of_worship"]["name"]["building"](around:800,${pos.lat},${pos.lon});
+      nwr["leisure"="park"]["name"](around:800,${pos.lat},${pos.lon});
+      nwr["amenity"="fountain"]["name"](around:600,${pos.lat},${pos.lon});
+    );out tags center 120;`;
+    const [osm, wiki] = await Promise.all([
+      withTimeout(fetch("https://overpass-api.de/api/interpreter", { method: "POST", body: "data=" + encodeURIComponent(q) }).then(r => r.json()), 16000).catch(() => ({ elements: [] })),
+      withTimeout(wikiNearR(pos, 1000), 10000).catch(() => []),
+    ]);
+    const kx = Math.cos(pos.lat * Math.PI / 180) * 111320, ky = 110540;
+    const geo = (lat, lon) => { const x = (lon - pos.lon) * kx, y = (lat - pos.lat) * ky; return { dist: Math.round(Math.hypot(x, y)), bearing: Math.round((Math.atan2(x, y) * 180 / Math.PI + 360) % 360) }; };
+    const byName = new Map();
+    for (const e of osm.elements || []) {
+      const t = e.tags || {}, c = e.center || e; if (!c.lat) continue;
+      const name = (state.lang === "ru" && t["name:ru"]) || (state.lang === "en" && t["name:en"]) || t.name;
+      const kindKey = t.tourism || t.historic || (t.amenity === "place_of_worship" ? "place_of_worship" : t.leisure || t.amenity);
+      const o = { name, lat: c.lat, lon: c.lon, kind: SIGHT_KIND[kindKey] || kindKey || "", info: [t.start_date && `с ${t.start_date}`, t.heritage && "памятник", t.wikipedia && "есть в Википедии", t.description].filter(Boolean).join(", "), ...geo(c.lat, c.lon) };
+      const k = name.toLowerCase(); if (!byName.has(k) || byName.get(k).dist > o.dist) byName.set(k, o);
+    }
+    for (const w of wiki) {
+      const k = w.title.replace(/\s*\(.*\)$/, "").toLowerCase();
+      const ex = [...byName.entries()].find(([n]) => n.includes(k) || k.includes(n));
+      if (ex) { ex[1].wiki = w.extract; ex[1].url = w.url; continue; }
+      byName.set(k, { name: w.title, lat: w.lat, lon: w.lon, kind: "статья Википедии", info: "", wiki: w.extract, url: w.url, ...geo(w.lat, w.lon) });
+    }
+    return [...byName.values()].filter(o => o.dist <= 1100).sort((a, b) => a.dist - b.dist).slice(0, 40).map((o, i) => ({ ...o, id: i + 1 }));
+  }
+  // Wikipedia geosearch with a wider radius, keeping coordinates
+  async function wikiNearR(pos, radius) {
+    const inIsrael = pos.lat > 29.4 && pos.lat < 33.4 && pos.lon > 34.2 && pos.lon < 35.9;
+    const langs = state.lang === "en" ? ["en", ...(inIsrael ? ["he"] : [])] : ["ru", "en", ...(inIsrael ? ["he"] : [])];
+    const one = async (lang) => {
+      const api = `https://${lang}.wikipedia.org/w/api.php?format=json&formatversion=2&origin=*`;
+      const g = await (await fetch(`${api}&action=query&list=geosearch&gscoord=${pos.lat}%7C${pos.lon}&gsradius=${radius}&gslimit=12`)).json();
+      const hits = g.query?.geosearch || []; if (!hits.length) return [];
+      const e = await (await fetch(`${api}&action=query&prop=extracts&exintro=1&explaintext=1&exchars=300&pageids=${hits.map(h => h.pageid).join("%7C")}`)).json();
+      const ex = Object.fromEntries((e.query?.pages || []).map(pg => [pg.pageid, pg.extract || ""]));
+      return hits.map(h => ({ title: h.title, lat: h.lat, lon: h.lon, extract: (ex[h.pageid] || "").replace(/\s+/g, " ").trim(), url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(h.title.replace(/ /g, "_"))}` }));
+    };
+    return (await Promise.all(langs.map(l => one(l).catch(() => [])))).flat();
+  }
+
+  async function pickSights(list) {
+    const prov = state.prov; if (!hasKey(prov) || list.length < 2) return null;
+    const ru = state.lang === "ru";
+    const prompt = `Ты опытный городской гид. Пользователь гуляет пешком. Вот объекты в радиусе ~1 км (id, название, тип, расстояние, сведения):
+${list.map(o => `${o.id}. ${o.name} [${o.kind}] ${o.dist} м${o.info ? "; " + o.info : ""}${o.wiki ? "; Википедия: " + o.wiki.slice(0, 220) : ""}`).join("\n")}
+
+Выбери до 6 мест, которые действительно стоит посмотреть: исторически значимые, красивые, необычные, с хорошей историей. Пропускай рядовые и малоинтересные объекты, даже если они ближе. Если хороших мест меньше, выбери меньше.
+Для каждого напиши одну живую фразу (до 20 слов), почему стоит дойти, ${ru ? "по-русски" : "in English"}. Не выдумывай факты, которых нет в данных или которых ты не знаешь наверняка.
+Ответ — только JSON-массив без пояснений: [{"id": 3, "why": "..."}]`;
+    const text = await callModel(prov, [{ role: "user", text: prompt }], () => {}, undefined);
+    const m = text.match(/\[[\s\S]*\]/); if (!m) return null;
+    const arr = JSON.parse(m[0]);
+    const byId = new Map(list.map(o => [o.id, o]));
+    const out = arr.map(a => byId.get(+a.id) && { ...byId.get(+a.id), why: String(a.why || "") }).filter(Boolean);
+    return out.length ? out : null;
+  }
+
+  function renderSights(list, opts = {}) {
+    const el = $("nearby"); el.hidden = false;
+    const head = `<div class="head"><h2>Что посмотреть рядом</h2><button type="button" class="close" id="nearClose">Закрыть</button></div>`;
+    if (opts.msg) { el.innerHTML = head + `<p class="${opts.err ? "err" : "note thinking"}">${esc(opts.msg)}</p>`; }
+    else el.innerHTML = head + `<ol>${list.map((o, i) => `<li>
+        <span class="nm">${esc(o.name)}</span>
+        <span class="dist">${o.dist} м · ~${walkMin(o.dist)} мин пешком · ${dirName(o.bearing)}${o.kind ? " · " + esc(o.kind) : ""}</span>
+        ${o.why ? `<p class="why">${esc(o.why)}</p>` : ""}
+        <div class="acts">
+          <button type="button" data-tell="${i}">Рассказать</button>
+          <a href="https://www.google.com/maps/dir/?api=1&destination=${o.lat},${o.lon}&travelmode=walking" target="_blank" rel="noopener">Маршрут</a>
+          ${o.url ? `<a href="${esc(o.url)}" target="_blank" rel="noopener">Википедия</a>` : ""}
+        </div></li>`).join("")}</ol>${opts.note ? `<p class="note">${esc(opts.note)}</p>` : ""}`;
+    $("nearClose").onclick = () => { el.hidden = true; };
+    el.querySelectorAll("[data-tell]").forEach(b => b.onclick = () => {
+      describePlace(list[+b.dataset.tell]);
+      $("story").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    });
+  }
+
+  let sightsBusy = false;
+  $("nearBtn").onclick = async () => {
+    if (sightsBusy) return; sightsBusy = true;
+    try {
+      renderSights([], { msg: "Определяю, где ты…" });
+      const fresh = state.pos?.src === "gps" && Date.now() - state.pos.t < 120000;
+      const pos = fresh ? state.pos : await locate();
+      if (!pos) { renderSights([], { msg: "Нужна геопозиция. Разреши доступ к ней для этого сайта.", err: true }); return; }
+      renderSights([], { msg: "Ищу интересные места в радиусе километра…" });
+      const list = await sightsRaw(pos);
+      if (!list.length) { renderSights([], { msg: "Поблизости не нашлось отмеченных достопримечательностей.", err: true }); return; }
+      if (hasKey(state.prov)) renderSights([], { msg: `Нашёл ${list.length} мест, выбираю лучшие…` });
+      let picked = null;
+      try { picked = await pickSights(list); } catch {}
+      if (picked) renderSights(picked, { note: `Выбрано из ${list.length} мест поблизости.` });
+      else renderSights(list.slice(0, 12), { note: hasKey(state.prov) ? "Не получилось отобрать лучшие, показываю ближайшие." : "Добавь ключ модели в настройках, и гид отберёт лучшие места." });
+    } finally { sightsBusy = false; }
+  };
+
+  // A guide story about a place picked from the list, without a photo
+  async function describePlace(t) {
+    if (state.busy) { state.ctl?.abort(); await state.running?.catch(() => {}); }
+    const prov = state.prov;
+    const item = { text: "", prov, model: prov === "gemini" ? gModel.value.trim() : cModel.value, style: state.style, lang: state.lang, target: t,
+      pos: { lat: t.lat, lon: t.lon }, thumb: null, date: Date.now(), photoId: null, image: false, qa: [], near: t.url ? { wiki: [{ lang: state.lang, title: t.name, dist: 0, url: t.url }] } : null };
+    state.current = item;
+    if (!hasKey(prov)) { renderStory(item, { error: `Добавь ключ ${PROVIDERS[prov]} в настройках.` }); return; }
+    const ru = state.lang === "ru";
+    const prompt = `Ты опытный городской экскурсовод. Пользователь собирается пойти к месту: «${t.name}» (${t.kind || "объект"}), координаты ${t.lat.toFixed(5)}, ${t.lon.toFixed(5)}, в ${t.dist} м от него.
+${t.info ? "Данные с карты: " + t.info + "\n" : ""}${t.wiki ? "Википедия: " + t.wiki + "\n" : ""}
+Расскажи о нём как гид. Не выдумывай названия, даты и имена; чего не знаешь — не утверждай.
+- ${STYLE[state.style]}
+- Последний абзац начни словами «${ru ? "Обрати внимание:" : "Look closer:"}» и подскажи, что рассмотреть на месте.
+- Язык ответа: ${ru ? "русский" : "английский (простой, уровня B1–B2)"}.
+
+Формат строго такой:
+# Название объекта
+Уверенность: высокая|средняя|низкая · тип · годы (если известны)
+Затем абзацы текста через пустую строку.`;
+    const ctl = state.ctl = new AbortController();
+    const show = (o) => { if (state.current === item) renderStory(item, o); };
+    state.busy = true;
+    state.running = (async () => {
+      try {
+        show({ thinking: "Вспоминаю историю места…", streaming: true });
+        item.text = await callModel(prov, [{ role: "user", text: prompt }], (x) => { item.text = x; show({ streaming: true }); }, ctl.signal);
+        show(); saveToLog(item);
+      } catch (e) {
+        if (e?.name === "AbortError") return;
+        show({ error: e?.message || "Что-то пошло не так." });
+      } finally { if (state.ctl === ctl) state.busy = false; }
+    })();
+    return state.running;
+  }
+
   // ---------- Updates ----------
   // GitHub Pages lets phones cache the page for ~10 minutes; check for a newer build and offer a one-tap reload
-  const VERSION = 8;
+  const VERSION = 9;
   async function checkUpdate() {
     try {
       const html = await (await fetch("index.html?t=" + Date.now(), { cache: "no-store" })).text();
