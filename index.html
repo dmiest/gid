@@ -109,6 +109,8 @@ input[type="text"], input[type="password"], select {
 .story .tools { display: flex; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 12px; }
 .story .tools .btn { padding: 9px 12px; font-size: 14px; font-weight: 500; }
 .err { color: var(--danger); font-size: 14px; margin: 0; }
+.story .tools.share { border-top: 0; padding-top: 0; }
+.story .hint { font-size: 13px; color: var(--muted); margin: 0; }
 .ask { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
 .qa { display: flex; flex-direction: column; gap: 10px; }
 .qa:empty { display: none; }
@@ -211,7 +213,7 @@ input[type="text"], input[type="password"], select {
     <ul id="logList"></ul>
     <button type="button" class="clear" id="clearLog">Очистить историю</button>
   </section>
-  <p class="tag" id="ver">версия 5 · 17.10.2026</p>
+  <p class="tag" id="ver">версия 6 · 17.10.2026</p>
 </div>
 
 <script>
@@ -373,6 +375,7 @@ input[type="text"], input[type="password"], select {
       state.b64 = dataUrl.split(",")[1];
       state.thumb = scaled(img, 160).toDataURL("image/jpeg", 0.6);
       state.photoId = Date.now(); state.variants = new Map();
+      photos.put(state.photoId, state.b64);
       $("preview").src = dataUrl; $("preview").hidden = false; $("finderEmpty").hidden = true; $("finder").classList.add("has-img");
 
       if (exif && !fromCamera) {
@@ -521,6 +524,12 @@ ${contextBlock(near)}
           <button type="button" class="btn" id="againBtn">Рассказать иначе</button>
           ${hasKey(other) && item.image !== false ? `<button type="button" class="btn" id="otherBtn">Спросить ${PROVIDERS[other]}</button>` : ""}
         </div>
+        <div class="tools share">
+          <button type="button" class="btn" id="shareBtn" disabled>${shareIcon}Фото и текст</button>
+          <button type="button" class="btn" id="cardBtn" disabled>${cardIcon}Открытка</button>
+          <button type="button" class="btn" id="copyBtn">Копировать текст</button>
+        </div>
+        <p class="hint" id="shareHint" hidden></p>
         <div class="qa" id="qa">${(item.qa || []).map(x => `<div class="q">${esc(x.q)}</div><div class="a">${paras(x.a)}</div>`).join("")}</div>
         <form class="ask" id="askForm">
           <input type="text" id="askInput" placeholder="Спросить гида: кто архитектор? что было здесь раньше?" autocomplete="off">
@@ -532,6 +541,7 @@ ${contextBlock(near)}
     b("againBtn", () => describe({ again: true }));
     b("otherBtn", () => describe({ prov: other }));
     const f = $("askForm"); if (f) f.onsubmit = (e) => { e.preventDefault(); ask(); };
+    if ($("shareBtn")) wireShare(item);
   }
 
   // ---------- Describe ----------
@@ -615,8 +625,9 @@ ${contextBlock(near)}
   function saveToLog(item) {
     if (!item.text) return;
     let log = getLog().filter(x => x.date !== item.date);
-    const { near, ...rest } = item;
+    const { near, _share, ...rest } = item;
     log.unshift({ ...rest, near: near ? { address: near.address } : null });
+    log.slice(60).forEach(x => photos.del(x.photoId || x.date));
     log = log.slice(0, 60);
     while (log.length && !store.set("kg.log", log)) log.pop();
     renderLog();
@@ -629,10 +640,9 @@ ${contextBlock(near)}
         <span><span class="t">${inline(parse(x.text).title || "Без названия")}</span>
         <span class="s">${esc(d)} · ${esc(PROVIDERS[x.prov] || "")}${x.pos ? " · " + x.pos.lat.toFixed(4) + ", " + x.pos.lon.toFixed(4) : ""}</span></span></button></li>`;
     }).join("");
-    $("logList").querySelectorAll("button").forEach(b => b.onclick = () => {
+    $("logList").querySelectorAll("button").forEach(b => b.onclick = async () => {
       const x = getLog()[+b.dataset.i]; if (!x) return;
-      state.current = { ...x, qa: x.qa || [], image: false };
-      renderStory(state.current);
+      await openFromLog(x);
       $("story").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
     });
   }
@@ -640,12 +650,151 @@ ${contextBlock(near)}
   $("clearLog").onclick = () => {
     const btn = $("clearLog");
     if (!armed) { armed = true; btn.textContent = "Точно очистить? Нажми ещё раз"; setTimeout(() => { armed = false; btn.textContent = "Очистить историю"; }, 4000); return; }
-    store.set("kg.log", []); armed = false; btn.textContent = "Очистить историю"; renderLog();
+    store.set("kg.log", []); photos.clear(); armed = false; btn.textContent = "Очистить историю"; renderLog();
   };
+
+  // ---------- Photo store (IndexedDB: full photos for history and sharing) ----------
+  const photos = (() => {
+    let dbp = null;
+    const open = () => dbp ||= new Promise((res, rej) => {
+      const r = indexedDB.open("kg", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("photos");
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    });
+    const run = async (mode, fn) => {
+      try {
+        const db = await open();
+        return await new Promise((res, rej) => {
+          const t = db.transaction("photos", mode); const req = fn(t.objectStore("photos"));
+          t.oncomplete = () => res(req?.result); t.onerror = () => rej(t.error);
+        });
+      } catch { return null; }
+    };
+    return {
+      put: (k, v) => k && run("readwrite", s => s.put(v, k)),
+      get: (k) => k ? run("readonly", s => s.get(k)) : Promise.resolve(null),
+      del: (k) => k && run("readwrite", s => s.delete(k)),
+      clear: () => run("readwrite", s => s.clear()),
+    };
+  })();
+
+  async function openFromLog(x) {
+    const pid = x.photoId || x.date;
+    const b64 = await photos.get(pid);
+    const item = { ...x, photoId: pid, qa: x.qa || [], image: !!b64 };
+    if (b64) {
+      state.b64 = b64; state.photoId = pid; state.thumb = x.thumb; state.pos = x.pos || null; state.near = x.near || null;
+      state.variants = new Map([[`${x.prov}|${x.style || state.style}|${x.lang || state.lang}|${x.place || ""}`, item]]);
+      $("preview").src = "data:image/jpeg;base64," + b64; $("preview").hidden = false;
+      $("finderEmpty").hidden = true; $("finder").classList.add("has-img");
+    }
+    state.current = item;
+    renderStory(item);
+  }
+
+  // ---------- Sharing ----------
+  const shareIcon = '<svg viewBox="0 0 24 24"><path d="M12 2 7.5 6.5l1.4 1.4L11 5.8V15h2V5.8l2.1 2.1 1.4-1.4L12 2zM5 10v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V10h-2v10H7V10H5z"/></svg>';
+  const cardIcon = '<svg viewBox="0 0 24 24"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm0 2v7h14V5H5zm0 9v2h14v-2H5zm0 4v1h9v-1H5z"/></svg>';
+  const b64ToBlob = (b64, type) => { const bin = atob(b64); const a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i); return new Blob([a], { type }); };
+  const slug = (t) => (t || "mesto").replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "").slice(0, 40) || "mesto";
+
+  function shareText(item) {
+    const p = parse(item.text);
+    const parts = [p.title, p.meta, p.body.replace(/\*\*(.+?)\*\*/g, "$1")].filter(Boolean);
+    if (item.pos) parts.push(`На карте: https://maps.google.com/?q=${item.pos.lat},${item.pos.lon}`);
+    (item.qa || []).filter(x => x.a).forEach(x => parts.push(`— ${x.q}\n${x.a}`));
+    return parts.join("\n\n");
+  }
+
+  function wrapLines(ctx, text, maxW) {
+    const out = [];
+    for (const para of text.split("\n")) {
+      let line = "";
+      for (const w of para.split(/\s+/).filter(Boolean)) {
+        const t = line ? line + " " + w : w;
+        if (ctx.measureText(t).width > maxW && line) { out.push(line); line = w; } else line = t;
+      }
+      out.push(line);
+    }
+    return out;
+  }
+
+  // A tall share card: photo on top, the story below, place and date at the bottom
+  async function makeCard(item, b64) {
+    try { await Promise.all(["400 60px Alice", "400 34px 'Golos Text'", "400 24px 'JetBrains Mono'"].map(f => document.fonts.load(f))); } catch {}
+    const img = new Image(); img.src = "data:image/jpeg;base64," + b64; await img.decode();
+    const W = 1080, PAD = 72, TW = W - PAD * 2;
+    const c = document.createElement("canvas"); c.width = W; c.height = 9000;
+    const x = c.getContext("2d");
+    const C = { bg: "#F7F8F4", ink: "#1C2420", muted: "#5E6B64", mark: "#B5761E", line: "#CDD3CB" };
+    x.fillStyle = C.bg; x.fillRect(0, 0, W, c.height);
+    const ph = Math.min(Math.round(img.naturalHeight * W / img.naturalWidth), 1350);
+    const sc = Math.max(W / img.naturalWidth, ph / img.naturalHeight);
+    const sw = W / sc, sh = ph / sc;
+    x.drawImage(img, (img.naturalWidth - sw) / 2, (img.naturalHeight - sh) / 2, sw, sh, 0, 0, W, ph);
+    let y = ph + 80;
+    const p = parse(item.text);
+    x.textBaseline = "alphabetic";
+    if (p.title) { x.fillStyle = C.ink; x.font = "400 60px Alice, Georgia, serif"; for (const l of wrapLines(x, p.title, TW)) { x.fillText(l, PAD, y); y += 72; } y += 6; }
+    if (p.meta) { x.fillStyle = C.mark; x.font = "400 25px 'JetBrains Mono', ui-monospace, monospace"; for (const l of wrapLines(x, p.meta, TW)) { x.fillText(l, PAD, y); y += 36; } y += 22; }
+    x.font = "400 34px 'Golos Text', system-ui, sans-serif";
+    for (const para of p.body.replace(/\*\*(.+?)\*\*/g, "$1").split(/\n\s*\n/).map(t => t.trim()).filter(Boolean)) {
+      const look = /^(Обрати внимание|Look closer)/i.test(para);
+      const ind = look ? 28 : 0; const y0 = y - 36;
+      x.fillStyle = C.ink;
+      for (const l of wrapLines(x, para, TW - ind)) { x.fillText(l, PAD + ind, y); y += 52; }
+      if (look) { x.fillStyle = C.mark; x.fillRect(PAD, y0, 4, y - y0 - 30); }
+      y += 22;
+    }
+    y += 10; x.fillStyle = C.line; x.fillRect(PAD, y, TW, 2); y += 52;
+    x.fillStyle = C.muted; x.font = "400 24px 'JetBrains Mono', ui-monospace, monospace";
+    const date = new Date(item.date).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+    x.fillText(`Камерный гид · ${date}`, PAD, y);
+    if (item.pos) { y += 36; x.fillText(`${item.pos.lat.toFixed(5)}, ${item.pos.lon.toFixed(5)}`, PAD, y); }
+    y += 64;
+    const out = document.createElement("canvas"); out.width = W; out.height = y;
+    out.getContext("2d").drawImage(c, 0, 0);
+    return await new Promise(r => out.toBlob(r, "image/jpeg", 0.9));
+  }
+
+  // iOS only allows the share sheet straight from a tap, so the files are prepared as soon as the story is ready
+  function wireShare(item) {
+    const hint = (t) => { const h = $("shareHint"); if (!h) return; h.textContent = t || ""; h.hidden = !t; };
+    const name = slug(parse(item.text).title);
+    const text = shareText(item);
+    $("copyBtn").onclick = async () => {
+      try { await navigator.clipboard.writeText(text); hint("Текст скопирован."); } catch { hint("Не получилось скопировать текст."); }
+    };
+    if (!(item._share instanceof Promise)) item._share = null;
+    const ready = (item._share ||= (async () => {
+      const b64 = item.photoId === state.photoId && state.b64 ? state.b64 : await photos.get(item.photoId);
+      if (!b64) return null;
+      const photo = new File([b64ToBlob(b64, "image/jpeg")], name + ".jpg", { type: "image/jpeg" });
+      const card = new File([await makeCard(item, b64)], name + "-gid.jpg", { type: "image/jpeg" });
+      return { photo, card };
+    })().catch(() => null));
+    ready.then(f => {
+      if (state.current !== item || !$("shareBtn")) return;
+      if (!f) { hint("Фото этого места не сохранилось, можно поделиться только текстом."); $("shareBtn").hidden = $("cardBtn").hidden = true; return; }
+      $("shareBtn").disabled = $("cardBtn").disabled = false;
+      const go = async (files, withText) => {
+        const data = { files, title: parse(item.text).title || "Камерный гид" };
+        if (withText) data.text = text;
+        if (navigator.canShare?.(data)) {
+          try { await navigator.share(data); } catch (e) { if (e?.name !== "AbortError") hint("Не получилось открыть меню «Поделиться». Попробуй ещё раз."); }
+          return;
+        }
+        files.forEach(fl => { const a = document.createElement("a"); a.href = URL.createObjectURL(fl); a.download = fl.name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); });
+        if (withText) { try { await navigator.clipboard.writeText(text); hint("Фото скачано, текст скопирован."); } catch { hint("Фото скачано."); } }
+      };
+      $("shareBtn").onclick = () => go([f.photo], true);
+      $("cardBtn").onclick = () => go([f.card], false);
+    });
+  }
 
   // ---------- Updates ----------
   // GitHub Pages lets phones cache the page for ~10 minutes; check for a newer build and offer a one-tap reload
-  const VERSION = 5;
+  const VERSION = 6;
   async function checkUpdate() {
     try {
       const html = await (await fetch("index.html?t=" + Date.now(), { cache: "no-store" })).text();
@@ -662,7 +811,7 @@ ${contextBlock(near)}
 
   // ---------- Boot ----------
   const last = getLog()[0];
-  if (last) { state.current = { ...last, qa: last.qa || [], image: false }; renderStory(state.current); } else renderStory(SAMPLE);
+  if (last) openFromLog(last); else renderStory(SAMPLE);
   renderLog();
   if (navigator.permissions?.query) navigator.permissions.query({ name: "geolocation" }).then(p => { if (p.state === "granted") locate(); }).catch(() => {});
 })();
