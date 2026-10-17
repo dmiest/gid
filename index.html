@@ -229,7 +229,8 @@ input[type="text"], input[type="password"], select {
     blob: null, b64: null, thumb: null,
     pos: null,           // {lat, lon, acc, src: "gps"|"exif", t}
     near: null,          // {address, objects:[...]} from OpenStreetMap
-    current: null, ctl: null, busy: false,
+    current: null, ctl: null, busy: false, running: null,
+    photoId: null, variants: new Map(),   // finished stories for the current photo, keyed by model|style|lang
   };
 
   // ---------- Settings ----------
@@ -255,8 +256,8 @@ input[type="text"], input[type="password"], select {
     document.querySelectorAll("[data-style]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.style === state.style)));
     document.querySelectorAll("[data-lang]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.lang === state.lang)));
   }
-  document.querySelectorAll("[data-style]").forEach(b => b.onclick = () => { state.style = b.dataset.style; store.set("kg.style", state.style); syncSeg(); });
-  document.querySelectorAll("[data-lang]").forEach(b => b.onclick = () => { state.lang = b.dataset.lang; store.set("kg.lang", state.lang); syncSeg(); });
+  document.querySelectorAll("[data-style]").forEach(b => b.onclick = () => { if (state.style === b.dataset.style) return; state.style = b.dataset.style; store.set("kg.style", state.style); syncSeg(); retell(); });
+  document.querySelectorAll("[data-lang]").forEach(b => b.onclick = () => { if (state.lang === b.dataset.lang) return; state.lang = b.dataset.lang; store.set("kg.lang", state.lang); syncSeg(); retell(); });
   syncSeg();
   const place = $("place");
 
@@ -365,6 +366,7 @@ input[type="text"], input[type="password"], select {
       const dataUrl = big.toDataURL("image/jpeg", 0.85);
       state.b64 = dataUrl.split(",")[1];
       state.thumb = scaled(img, 160).toDataURL("image/jpeg", 0.6);
+      state.photoId = Date.now(); state.variants = new Map();
       $("preview").src = dataUrl; $("preview").hidden = false; $("finderEmpty").hidden = true; $("finder").classList.add("has-img");
 
       if (exif && !fromCamera) {
@@ -527,29 +529,46 @@ ${contextBlock(near)}
   }
 
   // ---------- Describe ----------
+  // Re-tell the current photo when style or language changes; finished versions are kept per photo so switching back is instant
+  function retell() {
+    if (state.b64 && state.current && state.current.photoId === state.photoId) describe();
+  }
+
   async function describe(opts = {}) {
-    if (!state.b64 || state.busy) return;
+    if (!state.b64) return;
+    if (state.busy) { state.ctl?.abort(); await state.running?.catch(() => {}); }
     const prov = opts.prov || state.prov;
-    const item = { text: "", prov, model: prov === "gemini" ? gModel.value.trim() : cModel.value, place: place.value.trim(), pos: state.pos, thumb: state.thumb, date: Date.now(), qa: [] };
+    const key = `${prov}|${state.style}|${state.lang}`;
+    const cached = !opts.again && state.variants.get(key);
+    if (cached) { state.current = cached; renderStory(cached); saveToLog(cached); return; }
+    const item = { text: "", prov, model: prov === "gemini" ? gModel.value.trim() : cModel.value, style: state.style, lang: state.lang,
+      place: place.value.trim(), pos: state.pos, thumb: state.thumb, date: state.photoId, photoId: state.photoId, qa: [] };
     state.current = item;
     if (!hasKey(prov)) {
       renderStory(item, { error: `Добавь ключ ${PROVIDERS[prov]} в настройках (шестерёнка вверху).` });
       $("settings").hidden = false; $("setBtn").setAttribute("aria-expanded", "true"); return;
     }
-    state.busy = true; state.ctl = new AbortController();
-    try {
-      renderStory(item, { thinking: "Смотрю, что рядом на карте…", streaming: true });
-      const near = state.pos ? (state.near || await lookupNear()) : null;
-      item.near = near;
-      renderStory(item, { thinking: "Рассматриваю фасад…", streaming: true });
-      item.text = await callModel(prov, [{ role: "user", text: buildPrompt(near, opts.again), image: state.b64 }],
-        (t) => { item.text = t; renderStory(item, { streaming: true }); }, state.ctl.signal);
-      renderStory(item); saveToLog(item);
-    } catch (e) {
-      const aborted = e?.name === "AbortError";
-      renderStory(item, aborted ? {} : { error: e?.message === "Failed to fetch" ? "Нет связи с сервером. Проверь интернет." : (e?.message || "Что-то пошло не так.") });
-      if (item.text) saveToLog(item);
-    } finally { state.busy = false; }
+    const ctl = state.ctl = new AbortController();
+    const show = (o) => { if (state.current === item) renderStory(item, o); };
+    state.busy = true;
+    state.running = (async () => {
+      try {
+        show({ thinking: "Смотрю, что рядом на карте…", streaming: true });
+        const near = state.pos ? (state.near || await lookupNear()) : null;
+        if (ctl.signal.aborted) throw new DOMException("aborted", "AbortError");
+        item.near = near;
+        show({ thinking: "Рассматриваю фасад…", streaming: true });
+        item.text = await callModel(prov, [{ role: "user", text: buildPrompt(near, opts.again), image: state.b64 }],
+          (t) => { item.text = t; show({ streaming: true }); }, ctl.signal);
+        if (item.photoId === state.photoId) state.variants.set(key, item);
+        show(); saveToLog(item);
+      } catch (e) {
+        if (e?.name === "AbortError") return;
+        show({ error: e?.message === "Failed to fetch" ? "Нет связи с сервером. Проверь интернет." : (e?.message || "Что-то пошло не так.") });
+        if (item.text) saveToLog(item);
+      } finally { if (state.ctl === ctl) state.busy = false; }
+    })();
+    return state.running;
   }
 
   async function ask() {
