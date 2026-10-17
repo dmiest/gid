@@ -217,7 +217,7 @@ input[type="text"], input[type="password"], select {
     <ul id="logList"></ul>
     <button type="button" class="clear" id="clearLog">Очистить историю</button>
   </section>
-  <p class="tag" id="ver">версия 7 · 17.10.2026</p>
+  <p class="tag" id="ver">версия 8 · 17.10.2026</p>
 </div>
 
 <script>
@@ -313,10 +313,99 @@ input[type="text"], input[type="password"], select {
         }).filter(o => o.name).sort((a, b) => (a.dist ?? 999) - (b.dist ?? 999)).slice(0, 15);
       }).catch(() => {});
     const wiki = withTimeout(wikiNear(pos), 9000).then(w => { near.wiki = w; }).catch(() => { near.wiki = []; });
-    await Promise.all([rev, ovp, wiki]);
+    const bld = withTimeout(buildingsNear(pos), 11000).then(b => { near.buildings = b; }).catch(() => { near.buildings = []; });
+    const wd = withTimeout(wikidataNear(pos), 10000).then(w => { near.wikidata = w; }).catch(() => { near.wikidata = []; });
+    await Promise.all([rev, ovp, wiki, bld, wd]);
     if (state.pos === pos) state.near = near;
     return near;
   }
+  // ---------- Compass ----------
+  // iPhone gives a compass heading only after a tap-granted permission; we ask on the first tap anywhere
+  const compass = { heading: null, atTap: null, asked: false };
+  function onOrient(e) {
+    let h = null;
+    if (typeof e.webkitCompassHeading === "number" && e.webkitCompassHeading >= 0) h = e.webkitCompassHeading;
+    else if (e.absolute && typeof e.alpha === "number") h = 360 - e.alpha;
+    if (h != null) compass.heading = Math.round((h + 360) % 360);
+  }
+  async function startCompass() {
+    if (compass.asked) return; compass.asked = true;
+    try {
+      if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+        if (await DeviceOrientationEvent.requestPermission() !== "granted") return;
+      }
+      window.addEventListener("deviceorientationabsolute", onOrient);
+      window.addEventListener("deviceorientation", onOrient);
+    } catch {}
+  }
+  document.addEventListener("click", startCompass, { capture: true });
+  $("cam").addEventListener("click", () => { compass.atTap = compass.heading; });
+  const DIRS = ["север", "северо-восток", "восток", "юго-восток", "юг", "юго-запад", "запад", "северо-запад"];
+  const dirName = (h) => DIRS[Math.round(((h % 360) + 360) % 360 / 45) % 8];
+
+  // ---------- Buildings around (OpenStreetMap outlines, named or not) ----------
+  async function buildingsNear(pos) {
+    const q = `[out:json][timeout:10];way["building"](around:120,${pos.lat},${pos.lon});out tags geom 80;`;
+    const j = await (await fetch("https://overpass-api.de/api/interpreter", { method: "POST", body: "data=" + encodeURIComponent(q) })).json();
+    const kx = Math.cos(pos.lat * Math.PI / 180) * 111320, ky = 110540;
+    return (j.elements || []).filter(e => e.geometry?.length > 2).map(e => {
+      const pts = e.geometry.map(g => [(g.lon - pos.lon) * kx, (g.lat - pos.lat) * ky]);
+      const cx = pts.reduce((a, p) => a + p[0], 0) / pts.length, cy = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+      const t = e.tags || {};
+      const addr = [t["addr:street"], t["addr:housenumber"]].filter(Boolean).join(", ");
+      const info = [
+        t.name && `«${t.name}»`, addr && `адрес: ${addr}`,
+        t["building:levels"] && `этажей: ${t["building:levels"]}`,
+        (t.start_date || t["building:start_date"]) && `построен: ${t.start_date || t["building:start_date"]}`,
+        t.architect && `архитектор: ${t.architect}`,
+        t["building:architecture"] && `стиль: ${t["building:architecture"]}`,
+        t["building:material"] && `материал: ${t["building:material"]}`,
+        t.building !== "yes" && `тип: ${t.building}`,
+        t.heritage && "объект культурного наследия",
+        (t.historic || t.tourism || t.amenity || t.shop) && `назначение: ${t.historic || t.tourism || t.amenity || t.shop}`,
+      ].filter(Boolean).join("; ");
+      return { pts, dist: Math.round(Math.hypot(cx, cy)), bearing: Math.round((Math.atan2(cx, cy) * 180 / Math.PI + 360) % 360), info: info || "без данных в OSM" };
+    }).sort((a, b) => a.dist - b.dist);
+  }
+  // First building wall the camera ray hits; nothing beyond 150 m
+  function buildingAhead(blds, heading) {
+    if (!blds?.length || heading == null) return null;
+    const r = heading * Math.PI / 180, dx = Math.sin(r), dy = Math.cos(r);
+    let best = null;
+    for (const b of blds) {
+      if (!b.pts) continue;
+      for (let i = 0; i < b.pts.length - 1; i++) {
+        const [x1, y1] = b.pts[i], [x2, y2] = b.pts[i + 1];
+        const ex = x2 - x1, ey = y2 - y1, den = dx * ey - dy * ex;
+        if (Math.abs(den) < 1e-9) continue;
+        const t = (x1 * ey - y1 * ex) / den, u = (x1 * dy - y1 * dx) / den;
+        if (t > 2 && t < 150 && u >= 0 && u <= 1 && (!best || t < best.dist)) best = { ...b, dist: Math.round(t) };
+      }
+    }
+    return best;
+  }
+
+  // ---------- Wikidata: heritage objects, dates, architects ----------
+  async function wikidataNear(pos) {
+    const q = `SELECT ?item ?itemLabel ?itemDescription ?dist ?inception ?architectLabel ?styleLabel ?heritageLabel WHERE {
+      SERVICE wikibase:around { ?item wdt:P625 ?loc. bd:serviceParam wikibase:center "Point(${pos.lon} ${pos.lat})"^^geo:wktLiteral; wikibase:radius "0.2"; wikibase:distance ?dist. }
+      OPTIONAL { ?item wdt:P571 ?inception } OPTIONAL { ?item wdt:P84 ?architect } OPTIONAL { ?item wdt:P149 ?style } OPTIONAL { ?item wdt:P1435 ?heritage }
+      SERVICE wikibase:label { bd:serviceParam wikibase:language "ru,en,he". }
+    } ORDER BY ?dist LIMIT 40`;
+    const j = await (await fetch("https://query.wikidata.org/sparql?format=json&query=" + encodeURIComponent(q), { headers: { Accept: "application/sparql-results+json" } })).json();
+    const by = new Map();
+    for (const b of j.results?.bindings || []) {
+      const id = b.item.value; const o = by.get(id) || { name: b.itemLabel?.value, desc: b.itemDescription?.value || "", dist: Math.round(+b.dist.value * 1000), year: "", architects: new Set(), styles: new Set(), heritage: new Set() };
+      if (b.inception?.value) o.year = b.inception.value.slice(0, 4).replace(/^0+/, "");
+      if (b.architectLabel) o.architects.add(b.architectLabel.value);
+      if (b.styleLabel) o.styles.add(b.styleLabel.value);
+      if (b.heritageLabel) o.heritage.add(b.heritageLabel.value);
+      by.set(id, o);
+    }
+    return [...by.values()].filter(o => o.name && !/^Q\d+$/.test(o.name)).slice(0, 12).map(o => ({ name: o.name, dist: o.dist,
+      info: [o.desc, o.year && `год: ${o.year}`, o.architects.size && `архитектор: ${[...o.architects].join(", ")}`, o.styles.size && `стиль: ${[...o.styles].join(", ")}`, o.heritage.size && [...o.heritage].join(", ")].filter(Boolean).join("; ") }));
+  }
+
   // Wikipedia articles geotagged within ~200 m: Russian and English everywhere, Hebrew inside Israel
   async function wikiNear(pos) {
     const inIsrael = pos.lat > 29.4 && pos.lat < 33.4 && pos.lon > 34.2 && pos.lon < 35.9;
@@ -359,10 +448,11 @@ input[type="text"], input[type="password"], select {
             const e = gpsOff + 2 + i * 12, tag = u16(e);
             if (tag === 1 || tag === 3) g[tag] = String.fromCharCode(v.getUint8(t + e + 8));
             if (tag === 2 || tag === 4) { const p = u32(e + 8), r = (k) => u32(p + k * 8) / (u32(p + k * 8 + 4) || 1); g[tag] = r(0) + r(1) / 60 + r(2) / 3600; }
+            if (tag === 17) { const p = u32(e + 8); g[17] = u32(p) / (u32(p + 4) || 1); }
           }
           if (g[2] == null || g[4] == null) return null;
           const lat = g[2] * (g[1] === "S" ? -1 : 1), lon = g[4] * (g[3] === "W" ? -1 : 1);
-          return (lat || lon) ? { lat: +lat.toFixed(6), lon: +lon.toFixed(6) } : null;
+          return (lat || lon) ? { lat: +lat.toFixed(6), lon: +lon.toFixed(6), heading: g[17] != null ? Math.round(g[17]) % 360 : null } : null;
         }
         if ((marker & 0xFF00) !== 0xFF00) break;
         off += 2 + size;
@@ -401,12 +491,15 @@ input[type="text"], input[type="password"], select {
       $("preview").src = dataUrl; $("preview").hidden = false; $("finderEmpty").hidden = true; $("finder").classList.add("has-img");
 
       if (exif && !fromCamera) {
-        state.pos = { ...exif, acc: null, src: "exif", t: Date.now() };
+        state.pos = { lat: exif.lat, lon: exif.lon, acc: null, src: "exif", t: Date.now() };
+        state.heading = exif.heading;
         showPos(`${exif.lat.toFixed(5)}, ${exif.lon.toFixed(5)} · из снимка`);
         state.near = null;
-      } else if (!state.pos || state.pos.src !== "gps" || Date.now() - state.pos.t > 60000) {
-        await locate();
+      } else {
+        state.heading = fromCamera ? compass.atTap : (exif?.heading ?? null);
+        if (!state.pos || state.pos.src !== "gps" || Date.now() - state.pos.t > 60000) await locate();
       }
+      if (state.heading != null) $("gpsInfo").textContent += ` · камера на ${dirName(state.heading)} (${state.heading}°)`;
       describe();
     } catch {
       renderStory(state.current || {}, { error: "Не получилось открыть снимок. Попробуй другой файл." });
@@ -428,6 +521,13 @@ input[type="text"], input[type="password"], select {
     if (near?.address) lines.push(`Адрес по OpenStreetMap: ${near.address}.`);
     if (near?.objects?.length) lines.push("Названные объекты рядом по OpenStreetMap (расстояние от пользователя):\n" +
       near.objects.map(o => `- ${o.name}${o.kind ? ` [${o.kind}]` : ""}${o.dist != null ? `, ${o.dist} м` : ""}${o.extra ? ` (${o.extra})` : ""}`).join("\n"));
+    const ahead = buildingAhead(near?.buildings, state.heading);
+    if (state.heading != null) lines.push(`Камера направлена на ${dirName(state.heading)} (${state.heading}°, по компасу телефона; погрешность 10–20°).`);
+    if (ahead) lines.push(`Здание в направлении камеры по контурам OpenStreetMap, ${ahead.dist} м: ${ahead.info}. Скорее всего, на фото именно оно; сверь с фото (этажность, форма) и, если совпадает, рассказывай об этом адресе.`);
+    if (near?.buildings?.length) lines.push("Ближайшие здания по OpenStreetMap (расстояние, направление от пользователя, данные):\n" +
+      near.buildings.slice(0, 8).map(b => `- ${b.dist} м, ${dirName(b.bearing)}: ${b.info}`).join("\n"));
+    if (near?.wikidata?.length) lines.push("Объекты Wikidata рядом (проверенные данные: годы, архитекторы, статус памятника):\n" +
+      near.wikidata.map(w => `- ${w.name}, ${w.dist} м: ${w.info || "без подробностей"}`).join("\n"));
     if (near?.wiki?.length) lines.push("Статьи Википедии о местах рядом (проверенные сведения; опирайся на них, если объект на фото совпадает с одним из них, и не переноси факты на другое здание):\n" +
       near.wiki.map(w => `- [${w.lang}] ${w.title}, ${w.dist} м: ${w.extract || "(без описания)"}`).join("\n"));
     if (place.value.trim()) lines.push(`Уточнение от пользователя: ${place.value.trim()}.`);
@@ -443,6 +543,7 @@ ${contextBlock(near)}
 - Сопоставь то, что видно на фото, с координатами и списком объектов рядом. Объект на фото обычно в пределах 20–150 м от пользователя.
 - Если уверен в конкретном здании, назови его. Если нет, честно скажи об этом в заголовке («Вероятно…» или «Здание в стиле …») и расскажи о стиле, эпохе, районе и о том, что можно понять по фасаду.
 - Не выдумывай названия, даты, имена архитекторов и истории. Чего не знаешь — не утверждай.
+- Если здание рядовое и сведений о нём мало, назови адрес и известные данные (год, этажность), определи стиль и эпоху по фасаду и расскажи о времени, улице и районе, к которым оно относится.
 - ${STYLE[state.style]}
 - Последний абзац начни словами «${ru ? "Обрати внимание:" : "Look closer:"}» и укажи 1–2 детали, которые стоит рассмотреть вживую.
 - Язык ответа: ${ru ? "русский" : "английский (простой, уровня B1–B2)"}.${again ? "\n- Расскажи по-другому: другие факты, другой угол, чем в обычном ответе." : ""}
@@ -584,7 +685,7 @@ ${contextBlock(near)}
     const cached = !opts.again && state.variants.get(key);
     if (cached) { state.current = cached; renderStory(cached); saveToLog(cached); return; }
     const item = { text: "", prov, model: prov === "gemini" ? gModel.value.trim() : cModel.value, style: state.style, lang: state.lang,
-      place: place.value.trim(), pos: state.pos, thumb: state.thumb, date: state.photoId, photoId: state.photoId, qa: [] };
+      place: place.value.trim(), pos: state.pos, heading: state.heading ?? null, thumb: state.thumb, date: state.photoId, photoId: state.photoId, qa: [] };
     state.current = item;
     if (!hasKey(prov)) {
       renderStory(item, { error: `Добавь ключ ${PROVIDERS[prov]} в настройках (шестерёнка вверху).` });
@@ -652,7 +753,7 @@ ${contextBlock(near)}
     if (!item.text) return;
     let log = getLog().filter(x => x.date !== item.date);
     const { near, _share, ...rest } = item;
-    log.unshift({ ...rest, near: near || null });
+    log.unshift({ ...rest, near: near ? { ...near, buildings: (near.buildings || []).slice(0, 8).map(({ pts, ...b }) => b) } : null });
     log.slice(60).forEach(x => photos.del(x.photoId || x.date));
     log = log.slice(0, 60);
     while (log.length && !store.set("kg.log", log)) log.pop();
@@ -709,7 +810,7 @@ ${contextBlock(near)}
     const b64 = await photos.get(pid);
     const item = { ...x, photoId: pid, qa: x.qa || [], image: !!b64 };
     if (b64) {
-      state.b64 = b64; state.photoId = pid; state.thumb = x.thumb; state.pos = x.pos || null; state.near = x.near || null;
+      state.b64 = b64; state.photoId = pid; state.thumb = x.thumb; state.pos = x.pos || null; state.near = x.near || null; state.heading = x.heading ?? null;
       state.variants = new Map([[`${x.prov}|${x.style || state.style}|${x.lang || state.lang}|${x.place || ""}`, item]]);
       $("preview").src = "data:image/jpeg;base64," + b64; $("preview").hidden = false;
       $("finderEmpty").hidden = true; $("finder").classList.add("has-img");
@@ -820,7 +921,7 @@ ${contextBlock(near)}
 
   // ---------- Updates ----------
   // GitHub Pages lets phones cache the page for ~10 minutes; check for a newer build and offer a one-tap reload
-  const VERSION = 7;
+  const VERSION = 8;
   async function checkUpdate() {
     try {
       const html = await (await fetch("index.html?t=" + Date.now(), { cache: "no-store" })).text();
