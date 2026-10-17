@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Камерный гид</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Гид">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#ECEEE8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121815" media="(prefers-color-scheme: dark)">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22%D0%9A%D0%B0%D0%BC%D0%B5%D1%80%D0%BD%D1%8B%D0%B9%20%D0%B3%D0%B8%D0%B4%22%2C%22short_name%22%3A%22%D0%93%D0%B8%D0%B4%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23ECEEE8%22%2C%22theme_color%22%3A%22%230F6B5C%22%7D">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alice&family=Golos+Text:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one narrow column, like a pocket guidebook — viewfinder on top, story below, logbook at the end */
+:root {
+  --bg: #ECEEE8; --surface: #F7F8F4; --ink: #1C2420; --muted: #5E6B64; --line: #CDD3CB;
+  --accent: #0F6B5C; --accent-ink: #F3FAF7; --mark: #B5761E; --danger: #A33A2C; --ok: #2F7A3E;
+  --f-display: "Alice", Georgia, "Times New Roman", serif;
+  --f-body: "Golos Text", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #121815; --surface: #1A221E; --ink: #E4E9E3; --muted: #93A099; --line: #2D3832;
+  --accent: #4FB8A4; --accent-ink: #0C1714; --mark: #E0A44E; --danger: #E2796A; --ok: #7CC98A; color-scheme: dark;
+}}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 16px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-top: calc(18px + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+}
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+.wrap { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+h1 { font-family: var(--f-display); font-weight: 400; font-size: 30px; line-height: 1.1; margin: 0; }
+.tag { font-family: var(--f-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.iconbtn { background: none; border: 1px solid var(--line); color: var(--ink); border-radius: 10px; padding: 7px 10px; font: 500 13px var(--f-body); cursor: pointer; display: inline-flex; gap: 6px; align-items: center; }
+.iconbtn svg { width: 16px; height: 16px; fill: currentColor; }
+
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; background: var(--surface); }
+.seg button { border: 0; background: transparent; color: var(--muted); font: 500 13px var(--f-body); padding: 6px 12px; border-radius: 999px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.field label, .lbl { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+input[type="text"], input[type="password"], select {
+  font: 16px var(--f-body); color: var(--ink); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px; width: 100%;
+}
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Settings */
+.settings { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.settings h2 { font: 600 15px var(--f-body); margin: 0; }
+.settings .note { font-size: 13px; color: var(--muted); margin: 0; }
+.settings a { color: var(--accent); }
+.prov { border-top: 1px solid var(--line); padding-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+.prov .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.prov .head b { font-weight: 600; }
+.status { font: 500 11px var(--f-mono); text-transform: uppercase; letter-spacing: .06em; }
+.status.ok { color: var(--ok); } .status.no { color: var(--muted); }
+
+/* Location */
+.loc { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end; }
+.gps { font: 12px var(--f-mono); color: var(--mark); margin: -10px 0 0; font-variant-numeric: tabular-nums; }
+.gps.err { color: var(--danger); font-family: var(--f-body); }
+
+/* Viewfinder */
+.finder { position: relative; border-radius: 16px; overflow: hidden; background: var(--surface); border: 1px solid var(--line); aspect-ratio: 4 / 3; max-width: 100%; display: grid; place-items: center; }
+.finder img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.finder .corners { position: absolute; inset: 14px; pointer-events: none;
+  background:
+    linear-gradient(var(--mark),var(--mark)) top left/22px 2px no-repeat, linear-gradient(var(--mark),var(--mark)) top left/2px 22px no-repeat,
+    linear-gradient(var(--mark),var(--mark)) top right/22px 2px no-repeat, linear-gradient(var(--mark),var(--mark)) top right/2px 22px no-repeat,
+    linear-gradient(var(--mark),var(--mark)) bottom left/22px 2px no-repeat, linear-gradient(var(--mark),var(--mark)) bottom left/2px 22px no-repeat,
+    linear-gradient(var(--mark),var(--mark)) bottom right/22px 2px no-repeat, linear-gradient(var(--mark),var(--mark)) bottom right/2px 22px no-repeat; }
+.finder .empty { text-align: center; color: var(--muted); padding: 24px; font-size: 14px; max-width: 30ch; }
+.actions { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.btn { font: 600 15px var(--f-body); border-radius: 12px; padding: 13px 16px; cursor: pointer; border: 1px solid var(--line); background: var(--surface); color: var(--ink); display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn svg { width: 18px; height: 18px; fill: currentColor; }
+.shot { position: relative; overflow: hidden; }
+.shot input { position: absolute; inset: 0; opacity: 0; cursor: pointer; font-size: 0; }
+
+/* Story */
+.story { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 20px 18px 18px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.story .eyebrow { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pill { font: 500 11px var(--f-mono); letter-spacing: .06em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.pill.sample { color: var(--mark); border-color: var(--mark); }
+.story h2 { font-family: var(--f-display); font-weight: 400; font-size: 25px; line-height: 1.2; margin: 0; text-wrap: balance; }
+.story .meta { font: 12px var(--f-mono); color: var(--mark); margin: 0; }
+.story .body p { margin: 0 0 .8em; max-width: 65ch; }
+.story .body p:last-child { margin-bottom: 0; }
+.story .body .look { border-left: 2px solid var(--mark); padding-left: 12px; }
+.thinking { color: var(--muted); font-style: italic; }
+.story .tools { display: flex; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 12px; }
+.story .tools .btn { padding: 9px 12px; font-size: 14px; font-weight: 500; }
+.err { color: var(--danger); font-size: 14px; margin: 0; }
+.ask { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.qa { display: flex; flex-direction: column; gap: 10px; }
+.qa:empty { display: none; }
+.qa .q { font-weight: 600; font-size: 14px; color: var(--muted); }
+.qa .a p { margin: 0 0 .6em; }
+
+/* Logbook */
+.log h3 { font: 500 12px var(--f-body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+.log ul { list-style: none; margin: 0; padding: 0; }
+.log li button { width: 100%; display: grid; grid-template-columns: 56px 1fr; gap: 12px; align-items: center; text-align: left; background: none; border: 0; border-top: 1px solid var(--line); padding: 10px 0; color: var(--ink); cursor: pointer; font: inherit; }
+.log li img { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; background: var(--line); }
+.log .t { font-family: var(--f-display); font-size: 17px; line-height: 1.25; display: block; }
+.log .s { font: 11px var(--f-mono); color: var(--muted); display: block; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.log .clear { background: none; border: 0; color: var(--muted); font: 13px var(--f-body); text-decoration: underline; cursor: pointer; padding: 8px 0 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Камерный гид</h1>
+    <button type="button" class="iconbtn" id="setBtn" aria-expanded="false" aria-controls="settings">
+      <svg viewBox="0 0 24 24"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.4-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.7a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.4L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.4 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.7h4l.4-2.7a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.4L19.4 13zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>
+      <span id="provLabel">Настройки</span>
+    </button>
+  </header>
+
+  <section class="settings" id="settings" hidden>
+    <h2>Модель и ключи</h2>
+    <div class="seg" role="group" aria-label="Модель">
+      <button type="button" data-prov="gemini" aria-pressed="true">Gemini</button>
+      <button type="button" data-prov="claude" aria-pressed="false">Claude</button>
+    </div>
+    <div class="prov">
+      <div class="head"><b>Gemini</b><span class="status" id="gStat"></span></div>
+      <div class="field"><label for="gKey">API-ключ</label><input type="password" id="gKey" autocomplete="off" placeholder="AIza…"></div>
+      <div class="field"><label for="gModel">Модель</label><input type="text" id="gModel" autocomplete="off"></div>
+      <p class="note">Бесплатный ключ: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. На бесплатном уровне Google может использовать запросы для улучшения своих продуктов.</p>
+    </div>
+    <div class="prov">
+      <div class="head"><b>Claude</b><span class="status" id="cStat"></span></div>
+      <div class="field"><label for="cKey">API-ключ</label><input type="password" id="cKey" autocomplete="off" placeholder="sk-ant-…"></div>
+      <div class="field"><label for="cModel">Модель</label>
+        <select id="cModel">
+          <option value="claude-sonnet-5-5">Sonnet 5.5 — баланс</option>
+          <option value="claude-haiku-5-5">Haiku 5.5 — быстрее и дешевле</option>
+          <option value="claude-opus-5-5">Opus 5.5 — максимум качества</option>
+        </select>
+      </div>
+      <p class="note">Ключ: <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. Оплата за запросы, без подписки.</p>
+    </div>
+    <p class="note">Ключи хранятся только в этом браузере на этом устройстве и уходят напрямую в Google или Anthropic.</p>
+  </section>
+
+  <section class="row" aria-label="Настройки рассказа">
+    <div class="seg" role="group" aria-label="Стиль">
+      <button type="button" data-style="short" aria-pressed="false">Кратко</button>
+      <button type="button" data-style="full" aria-pressed="true">Подробно</button>
+      <button type="button" data-style="tales" aria-pressed="false">Байки</button>
+    </div>
+    <div class="seg" role="group" aria-label="Язык">
+      <button type="button" data-lang="ru" aria-pressed="true">RU</button>
+      <button type="button" data-lang="en" aria-pressed="false">EN</button>
+    </div>
+  </section>
+
+  <div class="loc">
+    <div class="field">
+      <label for="place">Уточнение места (необязательно)</label>
+      <input type="text" id="place" placeholder="Например: смотрю на северную сторону площади" autocomplete="off">
+    </div>
+    <button type="button" class="btn" id="gpsBtn" aria-label="Обновить геопозицию">
+      <svg viewBox="0 0 24 24"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 3h-2.1A7 7 0 0 0 13 5.1V3h-2v2.1A7 7 0 0 0 5.1 11H3v2h2.1a7 7 0 0 0 5.9 5.9V21h2v-2.1a7 7 0 0 0 5.9-5.9H21v-2zm-9 6a5 5 0 1 1 0-10 5 5 0 0 1 0 10z"/></svg>GPS
+    </button>
+  </div>
+  <p class="gps" id="gpsInfo">Геопозиция ещё не определена</p>
+
+  <div class="finder">
+    <div class="empty" id="finderEmpty">Сфотографируй здание или выбери снимок из галереи</div>
+    <img id="preview" alt="Выбранный снимок" hidden>
+    <div class="corners"></div>
+  </div>
+
+  <div class="actions">
+    <label class="btn primary shot" for="cam">
+      <svg viewBox="0 0 24 24"><path d="M9 3 7.2 5H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.2L15 3H9zm3 5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zm0 2a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/></svg>
+      Сфотографировать
+      <input type="file" id="cam" accept="image/*" capture="environment">
+    </label>
+    <label class="btn shot" for="gal">
+      <svg viewBox="0 0 24 24"><path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 13h16l-5-6.5-3.5 4.5-2.5-3L4 17zM8 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/></svg>
+      Галерея
+      <input type="file" id="gal" accept="image/*">
+    </label>
+  </div>
+
+  <article class="story" id="story" aria-live="polite"></article>
+
+  <section class="log" id="log" hidden>
+    <h3>Мои места</h3>
+    <ul id="logList"></ul>
+    <button type="button" class="clear" id="clearLog">Очистить историю</button>
+  </section>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } },
+  };
+  const PROVIDERS = { gemini: "Gemini", claude: "Claude" };
+
+  const state = {
+    prov: store.get("kg.prov", "gemini"),
+    style: store.get("kg.style", "full"),
+    lang: store.get("kg.lang", "ru"),
+    blob: null, b64: null, thumb: null,
+    pos: null,           // {lat, lon, acc, src: "gps"|"exif", t}
+    near: null,          // {address, objects:[...]} from OpenStreetMap
+    current: null, ctl: null, busy: false,
+  };
+
+  // ---------- Settings ----------
+  const gKey = $("gKey"), gModel = $("gModel"), cKey = $("cKey"), cModel = $("cModel");
+  gKey.value = store.get("kg.gKey", ""); gModel.value = store.get("kg.gModel", "gemini-3.8-flash");
+  cKey.value = store.get("kg.cKey", ""); cModel.value = store.get("kg.cModel", "claude-sonnet-5-5");
+  [[gKey, "kg.gKey"], [gModel, "kg.gModel"], [cKey, "kg.cKey"], [cModel, "kg.cModel"]].forEach(([el, k]) =>
+    el.addEventListener("change", () => { store.set(k, el.value.trim()); syncProv(); }));
+  const hasKey = (p) => (p === "gemini" ? gKey : cKey).value.trim().length > 10;
+
+  function syncProv() {
+    document.querySelectorAll("[data-prov]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.prov === state.prov)));
+    $("gStat").textContent = hasKey("gemini") ? "ключ есть" : "нет ключа"; $("gStat").className = "status " + (hasKey("gemini") ? "ok" : "no");
+    $("cStat").textContent = hasKey("claude") ? "ключ есть" : "нет ключа"; $("cStat").className = "status " + (hasKey("claude") ? "ok" : "no");
+    $("provLabel").textContent = PROVIDERS[state.prov];
+  }
+  document.querySelectorAll("[data-prov]").forEach(b => b.onclick = () => { state.prov = b.dataset.prov; store.set("kg.prov", state.prov); syncProv(); });
+  $("setBtn").onclick = () => { const s = $("settings"); s.hidden = !s.hidden; $("setBtn").setAttribute("aria-expanded", String(!s.hidden)); };
+  syncProv();
+  if (!hasKey("gemini") && !hasKey("claude")) { $("settings").hidden = false; $("setBtn").setAttribute("aria-expanded", "true"); }
+
+  function syncSeg() {
+    document.querySelectorAll("[data-style]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.style === state.style)));
+    document.querySelectorAll("[data-lang]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.lang === state.lang)));
+  }
+  document.querySelectorAll("[data-style]").forEach(b => b.onclick = () => { state.style = b.dataset.style; store.set("kg.style", state.style); syncSeg(); });
+  document.querySelectorAll("[data-lang]").forEach(b => b.onclick = () => { state.lang = b.dataset.lang; store.set("kg.lang", state.lang); syncSeg(); });
+  syncSeg();
+  const place = $("place");
+
+  // ---------- Geolocation ----------
+  function showPos(msg, isErr) { const el = $("gpsInfo"); el.textContent = msg; el.classList.toggle("err", !!isErr); }
+  function locate() {
+    return new Promise((resolve) => {
+      if (!navigator.geolocation) { showPos("Браузер не даёт доступ к геопозиции.", true); return resolve(null); }
+      showPos("Определяю геопозицию…");
+      navigator.geolocation.getCurrentPosition((p) => {
+        state.pos = { lat: +p.coords.latitude.toFixed(6), lon: +p.coords.longitude.toFixed(6), acc: Math.round(p.coords.accuracy), src: "gps", t: Date.now() };
+        showPos(`${state.pos.lat.toFixed(5)}, ${state.pos.lon.toFixed(5)} · ±${state.pos.acc} м`);
+        state.near = null; lookupNear();
+        resolve(state.pos);
+      }, (e) => {
+        showPos(e.code === 1 ? "Доступ к геопозиции запрещён. Разреши его для этого сайта в настройках браузера." : "Не удалось определить геопозицию. Можно уточнить место текстом.", true);
+        resolve(null);
+      }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 20000 });
+    });
+  }
+  $("gpsBtn").onclick = locate;
+
+  // Nearby context from OpenStreetMap: street address + named buildings/landmarks within ~80 m
+  async function withTimeout(p, ms) { return Promise.race([p, new Promise((_, r) => setTimeout(() => r(new Error("timeout")), ms))]); }
+  async function lookupNear() {
+    const pos = state.pos; if (!pos) return null;
+    const near = { address: "", objects: [] };
+    const lang = state.lang === "ru" ? "ru,en" : "en";
+    const rev = withTimeout(fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&lat=${pos.lat}&lon=${pos.lon}&accept-language=${lang}`).then(r => r.json()), 6000)
+      .then(j => { near.address = j.display_name || ""; }).catch(() => {});
+    const q = `[out:json][timeout:8];(nwr(around:90,${pos.lat},${pos.lon})[name][~"^(historic|tourism|building|amenity|heritage|architect)$"~"."];);out tags center 30;`;
+    const ovp = withTimeout(fetch("https://overpass-api.de/api/interpreter", { method: "POST", body: "data=" + encodeURIComponent(q) }).then(r => r.json()), 9000)
+      .then(j => {
+        near.objects = (j.elements || []).map(e => {
+          const t = e.tags || {}; const c = e.center || e;
+          const dist = c.lat ? Math.round(haversine(pos.lat, pos.lon, c.lat, c.lon)) : null;
+          const kind = t.historic || t.tourism || t.amenity || (t.building && t.building !== "yes" ? t.building : "") || "";
+          const extra = [t["name:ru"] && t["name:ru"] !== t.name ? t["name:ru"] : "", t["name:en"] && t["name:en"] !== t.name ? t["name:en"] : "",
+            t.start_date ? "построено " + t.start_date : "", t.architect ? "архитектор " + t.architect : "", t.heritage ? "охраняемый объект" : ""].filter(Boolean).join(", ");
+          return { name: t.name, kind, dist, extra };
+        }).filter(o => o.name).sort((a, b) => (a.dist ?? 999) - (b.dist ?? 999)).slice(0, 15);
+      }).catch(() => {});
+    await Promise.all([rev, ovp]);
+    if (state.pos === pos) state.near = near;
+    return near;
+  }
+  function haversine(a, b, c, d) {
+    const R = 6371000, r = Math.PI / 180, x = (c - a) * r, y = (d - b) * r;
+    const h = Math.sin(x / 2) ** 2 + Math.cos(a * r) * Math.cos(c * r) * Math.sin(y / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+
+  // ---------- EXIF GPS (for gallery photos) ----------
+  function readGps(buf) {
+    try {
+      const v = new DataView(buf);
+      if (v.getUint16(0) !== 0xFFD8) return null;
+      let off = 2;
+      while (off + 4 < v.byteLength) {
+        const marker = v.getUint16(off), size = v.getUint16(off + 2);
+        if (marker === 0xFFE1 && v.getUint32(off + 4) === 0x45786966) {
+          const t = off + 10, le = v.getUint16(t) === 0x4949;
+          const u16 = (o) => v.getUint16(t + o, le), u32 = (o) => v.getUint32(t + o, le);
+          const ifd0 = u32(4), n = u16(ifd0); let gpsOff = 0;
+          for (let i = 0; i < n; i++) { const e = ifd0 + 2 + i * 12; if (u16(e) === 0x8825) gpsOff = u32(e + 8); }
+          if (!gpsOff) return null;
+          const g = {}, gn = u16(gpsOff);
+          for (let i = 0; i < gn; i++) {
+            const e = gpsOff + 2 + i * 12, tag = u16(e);
+            if (tag === 1 || tag === 3) g[tag] = String.fromCharCode(v.getUint8(t + e + 8));
+            if (tag === 2 || tag === 4) { const p = u32(e + 8), r = (k) => u32(p + k * 8) / (u32(p + k * 8 + 4) || 1); g[tag] = r(0) + r(1) / 60 + r(2) / 3600; }
+          }
+          if (g[2] == null || g[4] == null) return null;
+          const lat = g[2] * (g[1] === "S" ? -1 : 1), lon = g[4] * (g[3] === "W" ? -1 : 1);
+          return (lat || lon) ? { lat: +lat.toFixed(6), lon: +lon.toFixed(6) } : null;
+        }
+        if ((marker & 0xFF00) !== 0xFF00) break;
+        off += 2 + size;
+      }
+    } catch {}
+    return null;
+  }
+
+  // ---------- Image ----------
+  async function loadImage(file) {
+    const url = URL.createObjectURL(file);
+    try { const img = new Image(); img.src = url; await img.decode(); return img; }
+    finally { setTimeout(() => URL.revokeObjectURL(url), 2000); }
+  }
+  function scaled(img, max) {
+    const s = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement("canvas");
+    c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    return c;
+  }
+
+  async function onFile(e, fromCamera) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const exif = readGps(await file.slice(0, 256 * 1024).arrayBuffer());
+      const img = await loadImage(file);
+      const big = scaled(img, 1568);
+      const dataUrl = big.toDataURL("image/jpeg", 0.85);
+      state.b64 = dataUrl.split(",")[1];
+      state.thumb = scaled(img, 160).toDataURL("image/jpeg", 0.6);
+      $("preview").src = dataUrl; $("preview").hidden = false; $("finderEmpty").hidden = true;
+
+      if (exif && !fromCamera) {
+        state.pos = { ...exif, acc: null, src: "exif", t: Date.now() };
+        showPos(`${exif.lat.toFixed(5)}, ${exif.lon.toFixed(5)} · из снимка`);
+        state.near = null;
+      } else if (!state.pos || state.pos.src !== "gps" || Date.now() - state.pos.t > 60000) {
+        await locate();
+      }
+      describe();
+    } catch {
+      renderStory(state.current || {}, { error: "Не получилось открыть снимок. Попробуй другой файл." });
+    }
+  }
+  $("cam").addEventListener("change", (e) => onFile(e, true));
+  $("gal").addEventListener("change", (e) => onFile(e, false));
+
+  // ---------- Prompt ----------
+  const STYLE = {
+    short: "Коротко: 2 абзаца, около 90–120 слов.",
+    full: "Подробно: 4–5 абзацев, около 250–350 слов. История, архитектура, люди, связанные с местом.",
+    tales: "В духе живого гида-рассказчика: 3–4 абзаца, около 200–280 слов, с городскими легендами и курьёзами. Легенды явно помечай как легенды.",
+  };
+  function contextBlock(near) {
+    const lines = [];
+    if (state.pos) lines.push(`Координаты пользователя: ${state.pos.lat}, ${state.pos.lon}${state.pos.acc ? ` (точность ±${state.pos.acc} м)` : ""}${state.pos.src === "exif" ? " — из метаданных фото" : " — GPS телефона в момент съёмки"}.`);
+    else lines.push("Координат нет.");
+    if (near?.address) lines.push(`Адрес по OpenStreetMap: ${near.address}.`);
+    if (near?.objects?.length) lines.push("Названные объекты рядом по OpenStreetMap (расстояние от пользователя):\n" +
+      near.objects.map(o => `- ${o.name}${o.kind ? ` [${o.kind}]` : ""}${o.dist != null ? `, ${o.dist} м` : ""}${o.extra ? ` (${o.extra})` : ""}`).join("\n"));
+    if (place.value.trim()) lines.push(`Уточнение от пользователя: ${place.value.trim()}.`);
+    return lines.join("\n");
+  }
+  function buildPrompt(near, again) {
+    const ru = state.lang === "ru";
+    return `Ты опытный городской экскурсовод. На фото здание или городской объект, который пользователь видит прямо сейчас.
+
+${contextBlock(near)}
+
+Задача: определи объект и расскажи о нём как гид на прогулке.
+- Сопоставь то, что видно на фото, с координатами и списком объектов рядом. Объект на фото обычно в пределах 20–150 м от пользователя.
+- Если уверен в конкретном здании, назови его. Если нет, честно скажи об этом в заголовке («Вероятно…» или «Здание в стиле …») и расскажи о стиле, эпохе, районе и о том, что можно понять по фасаду.
+- Не выдумывай названия, даты, имена архитекторов и истории. Чего не знаешь — не утверждай.
+- ${STYLE[state.style]}
+- Последний абзац начни словами «${ru ? "Обрати внимание:" : "Look closer:"}» и укажи 1–2 детали, которые стоит рассмотреть вживую.
+- Язык ответа: ${ru ? "русский" : "английский (простой, уровня B1–B2)"}.${again ? "\n- Расскажи по-другому: другие факты, другой угол, чем в обычном ответе." : ""}
+
+Формат строго такой, без markdown-заголовков кроме первой строки:
+# Название объекта
+Уверенность: высокая|средняя|низкая · стиль · годы постройки (если известны)
+Затем абзацы текста через пустую строку.`;
+  }
+
+  // ---------- Providers (streaming) ----------
+  async function readSSE(res, onData, signal) {
+    const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
+    while (true) {
+      if (signal?.aborted) { reader.cancel().catch(() => {}); throw new DOMException("aborted", "AbortError"); }
+      const { value, done } = await reader.read(); if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+        if (line.startsWith("data:")) { const d = line.slice(5).trim(); if (d && d !== "[DONE]") { let j = null; try { j = JSON.parse(d); } catch {} if (j) onData(j); } }
+      }
+    }
+  }
+  async function httpError(res, prov) {
+    let msg = ""; try { const j = await res.json(); msg = j.error?.message || j.error?.type || ""; } catch {}
+    if (res.status === 401 || res.status === 403 || /API key/i.test(msg)) return `Ключ ${PROVIDERS[prov]} не подходит. Проверь его в настройках.`;
+    if (res.status === 429) return prov === "gemini" ? "Дневной или минутный лимит бесплатного Gemini исчерпан. Подожди или переключись на Claude." : "Слишком много запросов. Подожди минуту.";
+    if (res.status === 404) return `Модель не найдена. Проверь название модели ${PROVIDERS[prov]} в настройках.`;
+    if (res.status === 400 && /credit|balance/i.test(msg)) return "На счёте Anthropic закончились средства.";
+    return `${PROVIDERS[prov]} вернул ошибку ${res.status}${msg ? ": " + msg : ""}`;
+  }
+
+  // turns: [{role:"user"|"assistant", text, image?:b64}]
+  async function callModel(prov, turns, onText, signal) {
+    let text = "";
+    if (prov === "gemini") {
+      const model = gModel.value.trim() || "gemini-3.8-flash";
+      const contents = turns.map(t => ({ role: t.role === "assistant" ? "model" : "user",
+        parts: [...(t.image ? [{ inline_data: { mime_type: "image/jpeg", data: t.image } }] : []), { text: t.text }] }));
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, {
+        method: "POST", signal, headers: { "content-type": "application/json", "x-goog-api-key": gKey.value.trim() },
+        body: JSON.stringify({ contents }),
+      });
+      if (!res.ok) throw new Error(await httpError(res, prov));
+      await readSSE(res, (j) => {
+        const parts = j.candidates?.[0]?.content?.parts || [];
+        const add = parts.filter(p => p.text && !p.thought).map(p => p.text).join("");
+        if (add) { text += add; onText(text); }
+        if (j.promptFeedback?.blockReason) throw new Error("Gemini отказался обрабатывать снимок.");
+      }, signal);
+    } else {
+      const content = (t) => t.image ? [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: t.image } }, { type: "text", text: t.text }] : t.text;
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST", signal,
+        headers: { "content-type": "application/json", "x-api-key": cKey.value.trim(), "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+        body: JSON.stringify({ model: cModel.value, max_tokens: 2000, stream: true, messages: turns.map(t => ({ role: t.role, content: content(t) })) }),
+      });
+      if (!res.ok) throw new Error(await httpError(res, prov));
+      await readSSE(res, (j) => {
+        if (j.type === "content_block_delta" && j.delta?.type === "text_delta") { text += j.delta.text; onText(text); }
+        if (j.type === "error") throw new Error(j.error?.message || "Ошибка Claude");
+      }, signal);
+    }
+    if (!text.trim()) throw new Error("Модель вернула пустой ответ. Попробуй ещё раз.");
+    return text;
+  }
+
+  // ---------- Parse & render ----------
+  const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const inline = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/(^|\W)\*(.+?)\*(?=\W|$)/g, "$1<em>$2</em>");
+  function parse(text) {
+    const lines = (text || "").replace(/\r/g, "").split("\n"); let i = 0, title = "", meta = "";
+    while (i < lines.length && !lines[i].trim()) i++;
+    if (lines[i] && /^#\s*/.test(lines[i])) { title = lines[i].replace(/^#+\s*/, "").trim(); i++; }
+    while (i < lines.length && !lines[i].trim()) i++;
+    if (lines[i] && /^(Уверенность|Confidence)/i.test(lines[i].trim())) { meta = lines[i].trim(); i++; }
+    return { title, meta, body: lines.slice(i).join("\n").trim() };
+  }
+  const paras = (body) => body.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean).map(p =>
+    `<p${/^(Обрати внимание|Look closer)/i.test(p) ? ' class="look"' : ""}>${inline(p).replace(/\n/g, "<br>")}</p>`).join("");
+  const speakIcon = '<svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>';
+
+  const SAMPLE = { sample: true, text: "# Улица Смилански, Старый город\nУверенность: высокая · османская застройка · 1900–1910-е\n\nЭтот пример показывает, как выглядит рассказ. Добавь ключ в настройках и сделай снимок.\n\nСтарый город Беэр-Шевы застраивался в начале XX века, когда османские власти превратили стоянку бедуинов в административный центр Негева. Дома строили из светлого местного камня, с арочными окнами и внутренними дворами, которые спасали от жары.\n\nОбрати внимание: на каменные арки над окнами и кованые решётки." };
+
+  function renderStory(item, opts = {}) {
+    const el = $("story"); const p = parse(item.text);
+    const date = item.date ? new Date(item.date).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+    const other = item.prov === "gemini" ? "claude" : "gemini";
+    el.innerHTML = `
+      <div class="eyebrow">
+        ${item.sample ? '<span class="pill sample">Пример</span>' : `<span class="pill">${esc(PROVIDERS[item.prov] || "")}${item.model ? " · " + esc(item.model) : ""}</span>`}
+        ${date ? `<span class="tag">${esc(date)}</span>` : ""}
+      </div>
+      ${p.title ? `<h2>${inline(p.title)}</h2>` : ""}
+      ${p.meta ? `<p class="meta">${esc(p.meta)}</p>` : ""}
+      <div class="body">${opts.thinking && !p.body ? `<p class="thinking">${esc(opts.thinking)}</p>` : paras(p.body)}</div>
+      ${opts.error ? `<p class="err">${esc(opts.error)}</p>` : ""}
+      ${opts.streaming ? '<div class="tools"><button type="button" class="btn" id="stopBtn">Остановить</button></div>' : ""}
+      ${!opts.streaming && !item.sample && p.body ? `
+        <div class="tools">
+          <button type="button" class="btn" id="speakBtn">${speakIcon}Слушать</button>
+          <button type="button" class="btn" id="againBtn">Рассказать иначе</button>
+          ${hasKey(other) && item.image !== false ? `<button type="button" class="btn" id="otherBtn">Спросить ${PROVIDERS[other]}</button>` : ""}
+        </div>
+        <div class="qa" id="qa">${(item.qa || []).map(x => `<div class="q">${esc(x.q)}</div><div class="a">${paras(x.a)}</div>`).join("")}</div>
+        <form class="ask" id="askForm">
+          <input type="text" id="askInput" placeholder="Спросить гида: кто архитектор? что было здесь раньше?" autocomplete="off">
+          <button type="submit" class="btn primary">Спросить</button>
+        </form>` : ""}`;
+    const b = (id, fn) => { const x = $(id); if (x) x.onclick = fn; };
+    b("stopBtn", () => state.ctl?.abort());
+    b("speakBtn", () => speak(item));
+    b("againBtn", () => describe({ again: true }));
+    b("otherBtn", () => describe({ prov: other }));
+    const f = $("askForm"); if (f) f.onsubmit = (e) => { e.preventDefault(); ask(); };
+  }
+
+  // ---------- Describe ----------
+  async function describe(opts = {}) {
+    if (!state.b64 || state.busy) return;
+    const prov = opts.prov || state.prov;
+    const item = { text: "", prov, model: prov === "gemini" ? gModel.value.trim() : cModel.value, place: place.value.trim(), pos: state.pos, thumb: state.thumb, date: Date.now(), qa: [] };
+    state.current = item;
+    if (!hasKey(prov)) {
+      renderStory(item, { error: `Добавь ключ ${PROVIDERS[prov]} в настройках (шестерёнка вверху).` });
+      $("settings").hidden = false; $("setBtn").setAttribute("aria-expanded", "true"); return;
+    }
+    state.busy = true; state.ctl = new AbortController();
+    try {
+      renderStory(item, { thinking: "Смотрю, что рядом на карте…", streaming: true });
+      const near = state.pos ? (state.near || await lookupNear()) : null;
+      item.near = near;
+      renderStory(item, { thinking: "Рассматриваю фасад…", streaming: true });
+      item.text = await callModel(prov, [{ role: "user", text: buildPrompt(near, opts.again), image: state.b64 }],
+        (t) => { item.text = t; renderStory(item, { streaming: true }); }, state.ctl.signal);
+      renderStory(item); saveToLog(item);
+    } catch (e) {
+      const aborted = e?.name === "AbortError";
+      renderStory(item, aborted ? {} : { error: e?.message === "Failed to fetch" ? "Нет связи с сервером. Проверь интернет." : (e?.message || "Что-то пошло не так.") });
+      if (item.text) saveToLog(item);
+    } finally { state.busy = false; }
+  }
+
+  async function ask() {
+    const input = $("askInput"); const q = input.value.trim(); const item = state.current;
+    if (!q || !item || state.busy) return;
+    const prov = item.prov || state.prov;
+    if (!hasKey(prov)) return;
+    state.busy = true;
+    const qa = { q, a: "" }; item.qa.push(qa);
+    const qd = document.createElement("div"); qd.className = "q"; qd.textContent = q;
+    const ad = document.createElement("div"); ad.className = "a"; ad.innerHTML = '<p class="thinking">Вспоминаю…</p>';
+    $("qa").append(qd, ad); input.value = "";
+    const ru = state.lang === "ru";
+    const turns = [{ role: "user", text: `Ты городской экскурсовод. По фото и месту ты рассказал пользователю об объекте. Контекст места:\n${item.pos ? `Координаты ${item.pos.lat}, ${item.pos.lon}.` : ""} ${item.near?.address || ""}\n\nТвой рассказ:\n${item.text}\n\nДальше отвечай на вопросы пользователя об этом месте: коротко, 1–2 абзаца, ${ru ? "по-русски" : "in English"}, без markdown-заголовков. Если не знаешь точно, так и скажи.\n\nПервый вопрос: ${item.qa[0].q}` }];
+    item.qa.slice(1).forEach((x, i) => { turns.push({ role: "assistant", text: item.qa[i].a || "—" }); turns.push({ role: "user", text: x.q }); });
+    try {
+      qa.a = await callModel(prov, turns, (t) => { ad.innerHTML = paras(t); }, undefined);
+      ad.innerHTML = paras(qa.a); saveToLog(item);
+    } catch (e) {
+      ad.innerHTML = `<p class="err">${esc(e?.message || "Не получилось ответить.")}</p>`; item.qa.pop();
+    } finally { state.busy = false; }
+  }
+
+  // ---------- Speech ----------
+  function speak(item) {
+    const synth = window.speechSynthesis; if (!synth) return;
+    if (synth.speaking) { synth.cancel(); return; }
+    const p = parse(item.text);
+    const u = new SpeechSynthesisUtterance([p.title, p.body].join(". ").replace(/\*+/g, ""));
+    const lang = /[а-яё]/i.test(p.body) ? "ru" : "en";
+    u.lang = lang === "ru" ? "ru-RU" : "en-GB";
+    const v = synth.getVoices().find(v => v.lang?.toLowerCase().startsWith(lang)); if (v) u.voice = v;
+    synth.speak(u);
+  }
+
+  // ---------- Logbook ----------
+  const getLog = () => store.get("kg.log", []);
+  function saveToLog(item) {
+    if (!item.text) return;
+    let log = getLog().filter(x => x.date !== item.date);
+    const { near, ...rest } = item;
+    log.unshift({ ...rest, near: near ? { address: near.address } : null });
+    log = log.slice(0, 60);
+    while (log.length && !store.set("kg.log", log)) log.pop();
+    renderLog();
+  }
+  function renderLog() {
+    const log = getLog(); $("log").hidden = !log.length;
+    $("logList").innerHTML = log.map((x, i) => {
+      const d = new Date(x.date).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "2-digit" });
+      return `<li><button type="button" data-i="${i}">${x.thumb ? `<img src="${x.thumb}" alt="">` : '<img alt="">'}
+        <span><span class="t">${inline(parse(x.text).title || "Без названия")}</span>
+        <span class="s">${esc(d)} · ${esc(PROVIDERS[x.prov] || "")}${x.pos ? " · " + x.pos.lat.toFixed(4) + ", " + x.pos.lon.toFixed(4) : ""}</span></span></button></li>`;
+    }).join("");
+    $("logList").querySelectorAll("button").forEach(b => b.onclick = () => {
+      const x = getLog()[+b.dataset.i]; if (!x) return;
+      state.current = { ...x, qa: x.qa || [], image: false };
+      renderStory(state.current);
+      $("story").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    });
+  }
+  let armed = false;
+  $("clearLog").onclick = () => {
+    const btn = $("clearLog");
+    if (!armed) { armed = true; btn.textContent = "Точно очистить? Нажми ещё раз"; setTimeout(() => { armed = false; btn.textContent = "Очистить историю"; }, 4000); return; }
+    store.set("kg.log", []); armed = false; btn.textContent = "Очистить историю"; renderLog();
+  };
+
+  // ---------- Boot ----------
+  const last = getLog()[0];
+  if (last) { state.current = { ...last, qa: last.qa || [], image: false }; renderStory(state.current); } else renderStory(SAMPLE);
+  renderLog();
+  if (navigator.permissions?.query) navigator.permissions.query({ name: "geolocation" }).then(p => { if (p.state === "granted") locate(); }).catch(() => {});
+})();
+</script>
+</body>
+</html>
