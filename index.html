@@ -211,7 +211,7 @@ input[type="text"], input[type="password"], select {
     <ul id="logList"></ul>
     <button type="button" class="clear" id="clearLog">Очистить историю</button>
   </section>
-  <p class="tag" id="ver">версия 4 · 17.10.2026</p>
+  <p class="tag" id="ver">версия 5 · 17.10.2026</p>
 </div>
 
 <script>
@@ -642,6 +642,23 @@ ${contextBlock(near)}
     if (!armed) { armed = true; btn.textContent = "Точно очистить? Нажми ещё раз"; setTimeout(() => { armed = false; btn.textContent = "Очистить историю"; }, 4000); return; }
     store.set("kg.log", []); armed = false; btn.textContent = "Очистить историю"; renderLog();
   };
+
+  // ---------- Updates ----------
+  // GitHub Pages lets phones cache the page for ~10 minutes; check for a newer build and offer a one-tap reload
+  const VERSION = 5;
+  async function checkUpdate() {
+    try {
+      const html = await (await fetch("index.html?t=" + Date.now(), { cache: "no-store" })).text();
+      const m = html.match(/const VERSION = (\d+);/);
+      if (m && +m[1] > VERSION) {
+        const ver = $("ver");
+        ver.innerHTML = `версия ${VERSION} · <button type="button" class="iconbtn" id="updBtn">Обновить до версии ${m[1]}</button>`;
+        $("updBtn").onclick = () => location.replace(location.pathname + "?v=" + m[1]);
+      }
+    } catch {}
+  }
+  checkUpdate();
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) checkUpdate(); });
 
   // ---------- Boot ----------
   const last = getLog()[0];
