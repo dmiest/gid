@@ -240,7 +240,7 @@ input[type="text"], input[type="password"], select {
     <ul id="logList"></ul>
     <button type="button" class="clear" id="clearLog">Очистить историю</button>
   </section>
-  <p class="tag" id="ver">версия 10 · 17.10.2026</p>
+  <p class="tag" id="ver">версия 11 · 19.10.2026</p>
 </div>
 
 <script>
@@ -299,9 +299,13 @@ input[type="text"], input[type="password"], select {
   // ---------- Geolocation ----------
   function showPos(msg, isErr) { const el = $("gpsInfo"); el.textContent = msg; el.classList.toggle("err", !!isErr); }
   function locate() {
-    return new Promise((resolve) => {
+    return new Promise((resolve0) => {
+      let done = false;
+      const resolve = (v) => { if (!done) { done = true; resolve0(v); } };
       if (!navigator.geolocation) { showPos("Браузер не даёт доступ к геопозиции.", true); return resolve(null); }
       showPos("Определяю геопозицию…");
+      // The OS permission prompt does not count toward the geolocation timeout, so cap the whole wait ourselves
+      setTimeout(() => { if (!done) { showPos("Геопозиция не ответила. Нажми GPS ещё раз или уточни место текстом.", true); resolve(null); } }, 20000);
       navigator.geolocation.getCurrentPosition((p) => {
         state.pos = { lat: +p.coords.latitude.toFixed(6), lon: +p.coords.longitude.toFixed(6), acc: Math.round(p.coords.accuracy), src: "gps", t: Date.now() };
         showPos(`${state.pos.lat.toFixed(5)}, ${state.pos.lon.toFixed(5)} · ±${state.pos.acc} м`);
@@ -313,7 +317,8 @@ input[type="text"], input[type="password"], select {
       }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 20000 });
     });
   }
-  $("gpsBtn").onclick = locate;
+  // The GPS button also switches the compass on: iPhone asks for motion access only from a deliberate tap
+  $("gpsBtn").onclick = async () => { await startCompass(); locate(); };
 
   // Nearby context from OpenStreetMap: street address + named buildings/landmarks within ~80 m
   async function withTimeout(p, ms) { return Promise.race([p, new Promise((_, r) => setTimeout(() => r(new Error("timeout")), ms))]); }
@@ -351,17 +356,20 @@ input[type="text"], input[type="password"], select {
     else if (e.absolute && typeof e.alpha === "number") h = 360 - e.alpha;
     if (h != null) compass.heading = Math.round((h + 360) % 360);
   }
-  async function startCompass() {
-    if (compass.asked) return; compass.asked = true;
-    try {
-      if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
-        if (await DeviceOrientationEvent.requestPermission() !== "granted") return;
-      }
-      window.addEventListener("deviceorientationabsolute", onOrient);
-      window.addEventListener("deviceorientation", onOrient);
-    } catch {}
+  const needsAsk = typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function";
+  function listenCompass() {
+    if (compass.on) return; compass.on = true;
+    window.addEventListener("deviceorientationabsolute", onOrient);
+    window.addEventListener("deviceorientation", onOrient);
   }
-  document.addEventListener("click", startCompass, { capture: true });
+  async function startCompass() {
+    if (compass.on || compass.asked) return; compass.asked = true;
+    try {
+      if (needsAsk && await DeviceOrientationEvent.requestPermission() !== "granted") return;
+      listenCompass();
+    } catch { compass.asked = false; }
+  }
+  if (!needsAsk) listenCompass();
   $("cam").addEventListener("click", () => { compass.atTap = compass.heading; });
   const DIRS = ["север", "северо-восток", "восток", "юго-восток", "юг", "юго-запад", "запад", "северо-запад"];
   const dirName = (h) => DIRS[Math.round(((h % 360) + 360) % 360 / 45) % 8];
@@ -523,6 +531,7 @@ input[type="text"], input[type="password"], select {
         if (!state.pos || state.pos.src !== "gps" || Date.now() - state.pos.t > 60000) await locate();
       }
       if (state.heading != null) $("gpsInfo").textContent += ` · камера на ${dirName(state.heading)} (${state.heading}°)`;
+      else if (fromCamera && needsAsk && !compass.on) $("gpsInfo").textContent += " · компас выключен: нажми GPS перед снимком";
       describe();
     } catch {
       renderStory(state.current || {}, { error: "Не получилось открыть снимок. Попробуй другой файл." });
@@ -1100,7 +1109,7 @@ ${t.info ? "Данные с карты: " + t.info + "\n" : ""}${t.wiki ? "Ви�
 
   // ---------- Updates ----------
   // GitHub Pages lets phones cache the page for ~10 minutes; check for a newer build and offer a one-tap reload
-  const VERSION = 10;
+  const VERSION = 11;
   async function checkUpdate() {
     try {
       const html = await (await fetch("index.html?t=" + Date.now(), { cache: "no-store" })).text();
